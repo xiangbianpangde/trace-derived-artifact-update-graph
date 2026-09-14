@@ -83,6 +83,91 @@ def cmd_trace_ingest(args):
 
     print(f"[trace-ingest] Ingested trace '{trace_id}': {count_organic} organic events, {count_recommended} recommended events. Schema validation: PASS.")
 
+def cmd_trace_record(args):
+    db_path = None
+    if getattr(args, "db", None):
+        db_path = Path(args.db).resolve()
+    else:
+        candidates = [
+            Path.cwd() / ".daug.sqlite",
+            Path.cwd() / ".daug" / "ledger.sqlite",
+            Path.cwd() / "gap-demo.sqlite",
+            Path.cwd() / "demo.sqlite",
+            BASE_DIR / "gap-demo.sqlite",
+            BASE_DIR / "demo.sqlite"
+        ]
+        for c in candidates:
+            if c.exists():
+                db_path = c
+                break
+
+    if not db_path or not db_path.exists():
+        if not getattr(args, "quiet", False):
+            print("[trace-record] Warning: No DAUG database found. Skipping trace recording.", file=sys.stderr)
+        return 0
+
+    ledger = get_ledger(str(db_path))
+    cursor = ledger.conn.cursor()
+
+    repo_row = cursor.execute("SELECT repository_id, canonical_root FROM repository LIMIT 1").fetchone()
+    repo_id = repo_row["repository_id"] if repo_row else (getattr(args, "repo_id", None) or "default-repo")
+    trace_id = getattr(args, "trace_id", None) or f"trace-live-pi-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    ledger.register_trace_run(
+        trace_id=trace_id,
+        task_id=f"task-{trace_id}",
+        repository_id=repo_id,
+        started_at=now
+    )
+
+    artifact_id = None
+    if args.path:
+        norm_path = args.path.lstrip("./")
+        art = cursor.execute(
+            "SELECT artifact_id FROM artifact WHERE canonical_uri=? OR canonical_uri LIKE ? LIMIT 1",
+            (norm_path, f"%{norm_path}")
+        ).fetchone()
+        if art:
+            artifact_id = art["artifact_id"]
+
+    seq_row = cursor.execute("SELECT MAX(sequence_no) as max_seq FROM tool_event WHERE trace_id=?", (trace_id,)).fetchone()
+    seq_no = (seq_row["max_seq"] + 1) if (seq_row and seq_row["max_seq"] is not None) else 1
+
+    event_id = f"evt-{uuid.uuid4().hex[:12]}"
+    from daug.ledger import compute_json_digest
+    ev = {
+        "event_id": event_id,
+        "trace_id": trace_id,
+        "repository_id": repo_id,
+        "sequence_no": seq_no,
+        "parent_event_id": None,
+        "occurred_at": now,
+        "tool_name": args.tool or "generic",
+        "operation": args.op or "read",
+        "artifact_id": artifact_id,
+        "artifact_path": args.path,
+        "target_selector": None,
+        "input_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "output_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "before_hash": None,
+        "after_hash": None,
+        "diff_digest": None,
+        "result_status": args.status or "success",
+        "exit_code": 0,
+        "access_origin": "organic",
+        "recommendation_id": None,
+        "collector_version": "pi-extension-0.1.0",
+        "payload_policy": "RECORD_HASH_ONLY",
+        "event_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "created_at": now
+    }
+    ev["event_digest"] = compute_json_digest(ev)
+    ledger.append_tool_event(ev)
+    if not getattr(args, "quiet", False):
+        print(f"[trace-record] Recorded {args.op} on '{args.path}' (id: {event_id})")
+    return 0
+
 def cmd_graph_build(args):
     ledger = get_ledger(args.db)
     builder = GraphBuilder(ledger)
@@ -701,12 +786,22 @@ def main():
     p_init.add_argument("--repo-root", default=str(BASE_DIR / "fixtures/demo-repo"), help="Path to repository root")
     p_init.add_argument("--repo-id", default="demo-auth-repo", help="Repository identifier")
 
-    # trace ingest
+    # trace
     p_ingest = subparsers.add_parser("trace", help="Trace commands")
     p_ingest_sub = p_ingest.add_subparsers(dest="trace_command")
     p_ing = p_ingest_sub.add_parser("ingest", help="Ingest JSONL trace")
     p_ing.add_argument("trace_file", help="Path to trace JSONL")
     p_ing.add_argument("--db", default="demo.sqlite", help="SQLite database path")
+
+    p_rec = p_ingest_sub.add_parser("record", help="Record single live tool event")
+    p_rec.add_argument("--tool", default="generic", help="Tool name")
+    p_rec.add_argument("--op", default="read", choices=["read", "search", "edit", "write", "delete", "test", "execute", "commit", "approve", "reject"], help="Operation type")
+    p_rec.add_argument("--path", default=None, help="Target file path")
+    p_rec.add_argument("--status", default="success", choices=["success", "failure", "cancelled", "unknown"], help="Result status")
+    p_rec.add_argument("--trace-id", default=None, help="Trace / session ID")
+    p_rec.add_argument("--repo-id", default=None, help="Repository ID")
+    p_rec.add_argument("--db", default=None, help="SQLite database path")
+    p_rec.add_argument("--quiet", action="store_true", help="Suppress output")
 
     # graph build
     p_graph = subparsers.add_parser("graph", help="Graph commands")
@@ -787,8 +882,14 @@ def main():
         cmd_init(args)
     elif args.command == "check":
         sys.exit(cmd_check(args))
-    elif args.command == "trace" and getattr(args, "trace_command", None) == "ingest":
-        cmd_trace_ingest(args)
+    elif args.command == "trace":
+        t_cmd = getattr(args, "trace_command", None)
+        if t_cmd == "ingest":
+            cmd_trace_ingest(args)
+        elif t_cmd == "record":
+            sys.exit(cmd_trace_record(args))
+        else:
+            p_ingest.print_help()
     elif args.command == "graph" and getattr(args, "graph_command", None) == "build":
         cmd_graph_build(args)
     elif args.command == "candidates" and getattr(args, "candidates_command", None) == "rank":

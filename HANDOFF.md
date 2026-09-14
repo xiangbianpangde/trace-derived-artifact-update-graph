@@ -66,6 +66,8 @@
 ├── 03_实现/
 │   ├── core/                                     # 核心算法内核 (daug package)
 │   ├── cli/                                      # 命令行入口脚本 (daug CLI)
+│   ├── plugins/                                  # 宿主 Agent 插件扩展
+│   │   └── pi/                                   # Pi Coding Agent 扩展镜像 (daug.ts)
 │   └── workspaces/                               # 隔离沙箱工作区
 ├── 04_测试与验收/
 │   ├── 01_测试策略.md                            # 评测与消融实验方案 (RQ1~RQ6)
@@ -83,6 +85,7 @@
 ├── 09_提案与草稿/                                # 未经 Gate 批准的暂存隔离区
 ├── daug/                                         # 根目录兼容符号与核心包
 ├── bin/daug                                      # 根目录便捷执行脚本
+├── extensions/                                   # Pi Agent 扩展目录符号 (daug.ts)
 └── templates/                                    # 12 份标准治理对象模板库
 ```
 
@@ -104,6 +107,7 @@
 | 最小补丁提案生成器 | **Tested** | 绑定 Expected Target Hash，生成 Unified Diff |
 | 补丁安全应用与回读校验 | **Tested with CAS Guard** | 严格受 CAS 预检防漂移保护，写回后执行回读 SHA-256 校验并生成审计凭据 |
 | 日常工程开发工具链 (CLI & Hook & CI) | **Tested** | `daug check`、`daug patch apply`、`daug hook install` 与 PR Check 工作流模板就绪 |
+| Pi Coding Agent 插件扩展 | **Tested in Pi Runtime** | `extensions/daug.ts` 与 `~/.pi/agent/extensions/daug.ts` 已通过 Pi 运行时加载验证 |
 | 自动化测试套件 (16项) | **Tested** | `python3 -m unittest discover -s tests` 16 项 100% 通过 (0.5s) |
 | 端到端演示演练 | **Tested** | `./bin/daug demo run` 成功落盘交互式报告与清单 |
 | 生产环境授权 | **Developer Tooling Ready (Manual Gate)** | 严格保留人工确认，未经开发者逐项复核授权绝无全自动写回 |
@@ -147,4 +151,11 @@
    # 卸载 pre-commit 钩子
    ./bin/daug hook uninstall
    ```
+6. **Pi Coding Agent 插件使用 (`extensions/daug.ts`)**:
+   - 插件已安装至全局 `~/.pi/agent/extensions/daug.ts`；
+   - 启动 `pi` 时，插件自动生效；
+   - 在 Pi 对话中使用 `/daug status` 或 `/daug check` 检查当前工作区陈旧文档；
+   - Agent 会在执行 `edit` / `write` 时自动触发更新图检查，并在发现陈旧时获得上下文注入与 UI 告警；
+   - Agent 可直接调用 `daug_check` 与 `daug_patch` 工具执行精细化文档修复。
+
 

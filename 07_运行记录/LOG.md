@@ -16,3 +16,4 @@ updated: 2026-09-14
 | PROC-0002 | 2026-09-14 | DECISION | DEC-0005 | 全面接入十进制治理架构，重构并拆解大技术方案文档 | 00_入口/00_当前.md | 创建 GitHub 远程仓库并推送代码 |
 | PROC-0003 | 2026-09-14 | RUN | GITHUB | 创建 GitHub 远程私有仓库 xiangbianpangde/trace-derived-artifact-update-graph 并推送初始分支 main | https://github.com/xiangbianpangde/trace-derived-artifact-update-graph | 完成整理工作汇报并交接 |
 | PROC-0004 | 2026-09-14 | DECISION | CATALOG | 创建项目全景目录文件00_入口/00_目录.md并通过软链接映射至README.md与00_目录.md | 00_入口/00_目录.md, README.md | 更新HANDOFF.md并推送到GitHub |
+| PROC-0005 | 2026-09-14 | CORRECTION | CATALOG | 修正目录文件为纯目录结构00_目录.md并软链接至README.md与00_入口/00_目录.md，移除重复的readme型内容 | 00_目录.md, README.md | 完成交接 |

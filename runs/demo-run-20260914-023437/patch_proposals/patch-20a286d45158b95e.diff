@@ -1,0 +1,14 @@
+--- a/docs/api_contract.md
++++ b/docs/api_contract.md
+@@ -2,5 +2,5 @@
+ 
+
+ ## Identity Attributes
+
+ Requests must contain identity attributes mapped to `UserContext`:
+
+-- Public field: `user_id` (string)
+
++- Public field: `subject_id` (string)
+
+ - Public field: `tenant_id` (string)

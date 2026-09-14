@@ -1,0 +1,22 @@
+--- a/tests/auth_filter.test.ts
++++ b/tests/auth_filter.test.ts
+@@ -3,8 +3,8 @@
+ 
+
+ export function runTests(): boolean {
+
+   const ctx = createUserContext('usr_123', 'ten_456', ['admin']);
+
+-  if (ctx.user_id !== 'usr_123') {
+
+-    throw new Error('user_id mismatch');
+
++  if (ctx.subject_id !== 'usr_123') {
+
++    throw new Error('subject_id mismatch');
+
+   }
+
+   return filterUserContext(ctx);
+
+ }

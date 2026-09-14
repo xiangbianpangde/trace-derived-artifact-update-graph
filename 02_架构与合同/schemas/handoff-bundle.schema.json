@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://r-icl.local/schemas/handoff-bundle.schema.json",
+  "title": "HandoffBundle (readonly minimal candidate schema)",
+  "description": "TS-001 候选最小 Schema。信封字段对齐 templates/HandoffBundle.md@v1 与 HO-0001 实测信封。不可变操作记录，非研究 canonical 对象。bundle_sha256 按 self-field 规范化规则（将本字段值替换为 <SELF_HASH> 后计算全文件 SHA-256），与包内 bundle_hash_rule 一致。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "type",
+    "handoff_id",
+    "status",
+    "sender",
+    "intended_receiver",
+    "created",
+    "task_slice_ref",
+    "attempt",
+    "state_pointer",
+    "expires_at",
+    "bundle_sha256"
+  ],
+  "properties": {
+    "type": { "const": "handoff-bundle" },
+    "handoff_id": { "type": "string", "pattern": "^HO-[0-9]{4}$" },
+    "status": { "enum": ["proposed", "dispatched", "received", "rejected", "superseded"] },
+    "sender": { "type": "string", "minLength": 1 },
+    "intended_receiver": { "type": "string", "minLength": 1 },
+    "created": { "type": "string", "format": "date" },
+    "task_slice_ref": { "type": "string", "minLength": 1 },
+    "attempt": { "type": "string", "pattern": "^attempt-[0-9]{3}$" },
+    "state_pointer": { "type": "string", "minLength": 1 },
+    "expires_at": { "type": ["string", "null"], "format": "date", "description": "可显式为 null（不过期）" },
+    "bundle_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "任务包载荷元数据（derived view of HandoffBundle）：从冻结合同复制，不扩大范围",
+      "required": ["template_ref", "template_sha256", "task_slice_sha256", "task_slice_revision", "shared_contract_ref", "shared_contract_sha256", "test_contract_ref", "test_contract_sha256", "bundle_hash_rule"],
+      "properties": {
+        "template_ref": { "type": "string", "minLength": 1 },
+        "template_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "task_slice_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "task_slice_revision": { "type": "integer", "minimum": 1 },
+        "shared_contract_ref": { "type": "string", "minLength": 1 },
+        "shared_contract_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "test_contract_ref": { "type": "string", "minLength": 1 },
+        "test_contract_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "bundle_hash_rule": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

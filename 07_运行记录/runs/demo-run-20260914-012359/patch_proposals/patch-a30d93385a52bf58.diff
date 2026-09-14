@@ -1,0 +1,16 @@
+--- a/src/auth/auth_filter.ts
++++ b/src/auth/auth_filter.ts
+@@ -1,6 +1,6 @@
+ import { UserContext } from './user_context';
+
+ 
+
+ export function filterUserContext(ctx: UserContext): boolean {
+
+-  const localFilterId = ctx.user_id;
+
++  const localFilterId = ctx.subject_id;
+
+   return localFilterId.length > 0 && ctx.roles.includes('admin');
+
+ }

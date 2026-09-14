@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://r-icl.local/schemas/result-bundle.schema.json",
+  "title": "ResultBundle (readonly minimal candidate schema)",
+  "description": "TS-001 候选最小 Schema。提交字段对齐 templates/ResultBundle.md@v1 与 CT-001@r2（三层 hash 标注、VAL verdict 词表、盲审节）。不可变操作记录：被拒提交也必须保留。bundle_type=review 时强制 verdict + blind_review（TS1-S-009 / TS1-I-007）。verdict 词表锁定为 CONFORMANT / DEVIATIONS_FOUND / INCOMPLETE / OUT_OF_SCOPE，禁止 PASS / approved。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "type",
+    "bundle_id",
+    "status",
+    "bundle_type",
+    "task_slice_ref",
+    "attempt",
+    "worker",
+    "runtime",
+    "session_id",
+    "created",
+    "hash_annotation",
+    "inputs_observed",
+    "actions",
+    "outputs",
+    "validation_observed",
+    "deviations",
+    "blockers",
+    "unverified",
+    "proposed_events"
+  ],
+  "properties": {
+    "type": { "const": "result-bundle" },
+    "bundle_id": { "type": "string", "pattern": "^RB-[0-9]{4}$" },
+    "status": { "enum": ["submitted", "accepted", "rejected"] },
+    "bundle_type": { "enum": ["implementation", "review"] },
+    "task_slice_ref": { "type": "string", "minLength": 1 },
+    "attempt": { "type": "string", "pattern": "^attempt-[0-9]{3}$" },
+    "worker": { "type": "string", "minLength": 1 },
+    "runtime": { "type": "string", "minLength": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "created": { "type": "string", "format": "date" },
+    "hash_annotation": {
+      "enum": ["worker_self_reported", "coordinator_pre_harness", "harness_authoritative"],
+      "description": "TS1-I-006 三层 hash 标注：worker 自报 / 协调方 pre-Harness 复算 / Harness 权威复算，三者来源必须可区分"
+    },
+    "bundle_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "可选：本 bundle 自 hash，按 self-field 规范化规则计算"
+    },
+    "verdict": {
+      "enum": ["CONFORMANT", "DEVIATIONS_FOUND", "INCOMPLETE", "OUT_OF_SCOPE"],
+      "description": "TS1-S-009：VAL 工程 verdict 词表（CT-001@r2）。只允许四个词，不得使用 PASS / approved"
+    },
+    "inputs_observed": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref", "expected_sha", "observed_sha"],
+        "properties": {
+          "ref": { "type": "string", "minLength": 1 },
+          "expected_sha": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "observed_sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands", "actual_read_paths", "actual_write_paths"],
+      "properties": {
+        "commands": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "actual_read_paths": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "actual_write_paths": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha", "type"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "type": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "validation_observed": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["check", "result", "evidence"],
+        "properties": {
+          "check": { "type": "string", "minLength": 1 },
+          "result": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "blind_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TS1-I-007：审核提交强制盲审节；必须先于交叉核对完成",
+      "required": ["conducted_before_cross_check", "method"],
+      "properties": {
+        "conducted_before_cross_check": { "type": "boolean", "const": true },
+        "method": { "type": "string", "minLength": 1 }
+      }
+    },
+    "deviations": { "type": "array", "items": { "type": "string" } },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "unverified": { "type": "array", "items": { "type": "string" } },
+    "proposed_events": { "type": "array", "items": { "type": "string" } }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "bundle_type": { "const": "review" } },
+        "required": ["bundle_type"]
+      },
+      "then": {
+        "required": ["verdict", "blind_review"]
+      }
+    }
+  ]
+}

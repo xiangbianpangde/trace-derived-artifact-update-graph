@@ -1,0 +1,38 @@
+{
+  "dataset_version": "daug.eval-gold.v1",
+  "repository_id": "demo-auth-repo",
+  "labels": [
+    {
+      "change_id": "change-interface-001",
+      "target_artifact_uri": "tests/auth_filter.test.ts",
+      "label": "MUST_UPDATE",
+      "rationale": "Static unit test invokes ctx.user_id which broke after interface change"
+    },
+    {
+      "change_id": "change-interface-001",
+      "target_artifact_uri": "docs/auth_design.md",
+      "label": "MUST_UPDATE",
+      "locator": "line:8",
+      "rationale": "Design documentation claims user_id is the primary field of UserContext"
+    },
+    {
+      "change_id": "change-interface-001",
+      "target_artifact_uri": "docs/api_contract.md",
+      "label": "MUST_UPDATE",
+      "locator": "line:5",
+      "rationale": "Contract document explicitly lists user_id as public field"
+    },
+    {
+      "change_id": "change-interface-001",
+      "target_artifact_uri": "docs/rollout_plan.md",
+      "label": "NO_UPDATE",
+      "rationale": "Operational deployment schedule is unaffected by property name change"
+    },
+    {
+      "change_id": "change-refactor-001",
+      "target_artifact_uri": "docs/auth_design.md",
+      "label": "NO_UPDATE",
+      "rationale": "Local variable rename inside auth_filter.ts does not alter public design claims"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+--- a/src/auth/user_context.ts
++++ b/src/auth/user_context.ts
+@@ -1,6 +1,6 @@
+ export interface UserContext {
+-  user_id: string;
++  subject_id: string;
+   tenant_id: string;
+   roles: string[];
+   authenticated_at: string;
+ }

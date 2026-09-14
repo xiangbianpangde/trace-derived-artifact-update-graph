@@ -1,0 +1,6 @@
+policy_name: auth-standard-v1
+identity:
+  identifier_field: user_id
+  allow_anonymous: false
+session:
+  timeout_seconds: 3600

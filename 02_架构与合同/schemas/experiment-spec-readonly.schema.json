@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://r-icl.local/schemas/experiment-spec-readonly.schema.json",
+  "title": "ExperimentSpec (readonly minimal candidate schema)",
+  "description": "TS-001 候选最小只读 Schema。对齐 CT-001@r2 的最小只读范围：spec_id、version、status、精确数据/fixture 引用（含 data_class）、验收指针、provenance。readonly=true 为常量，任何 mutation 请求 fail closed（TS1-P-004 / G-002 / Q-006）。本切片不实现 mutation。data_class 封闭枚举四类（Q-005），缺失或枚举外即拒绝（TS1-S-008 / TS1-P-006 / INV-016）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "spec_id", "version", "status", "readonly", "data_refs", "acceptance_refs", "provenance"],
+  "properties": {
+    "type": { "const": "experiment-spec" },
+    "spec_id": { "type": "string", "pattern": "^SPEC-[0-9]{4}$", "description": "候选 identity 规则" },
+    "version": { "type": "string", "pattern": "^v[0-9]+$", "description": "精确版本；禁止 latest（A-002）" },
+    "status": { "enum": ["proposed", "approved", "active", "superseded"] },
+    "readonly": { "const": true, "description": "TS1-P-004：本切片只读；mutation 一律 fail closed" },
+    "data_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref", "data_class", "version", "content_sha256"],
+        "properties": {
+          "ref": { "type": "string", "minLength": 1 },
+          "data_class": { "enum": ["fixture", "synthetic", "deidentified-sample", "external-ref"], "description": "Q-005 封闭枚举" },
+          "version": { "type": "string", "minLength": 1 },
+          "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "acceptance_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gate_ref", "kind"],
+        "properties": {
+          "gate_ref": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "created_by", "created_at", "license_or_permission", "transformation"],
+      "properties": {
+        "origin": { "type": "string", "minLength": 1 },
+        "created_by": { "type": "string", "minLength": 1 },
+        "created_at": { "type": "string", "format": "date" },
+        "license_or_permission": { "type": "string", "minLength": 1 },
+        "transformation": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

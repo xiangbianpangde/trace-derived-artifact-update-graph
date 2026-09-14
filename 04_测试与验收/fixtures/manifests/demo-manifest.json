@@ -1,0 +1,43 @@
+{
+  "manifest_version": "daug.manifest.v1",
+  "demo_version": "v0.1",
+  "repository_id": "demo-auth-repo",
+  "created_at": "2026-09-14T09:20:00Z",
+  "scenarios": [
+    {
+      "id": "A-interface-change",
+      "change_id": "change-interface-001",
+      "description": "Public field user_id renamed to subject_id in UserContext",
+      "expected_affected": [
+        "tests/auth_filter.test.ts",
+        "docs/auth_design.md",
+        "docs/api_contract.md"
+      ],
+      "expected_unaffected": [
+        "docs/rollout_plan.md"
+      ]
+    },
+    {
+      "id": "B-local-refactor",
+      "change_id": "change-refactor-001",
+      "description": "Negative control: local variable rename inside auth_filter.ts",
+      "expected_affected": [],
+      "expected_unaffected": [
+        "docs/auth_design.md",
+        "docs/rollout_plan.md"
+      ]
+    },
+    {
+      "id": "C-bulk-format",
+      "change_id": "change-bulk-001",
+      "description": "Large-scale code formatting task touching many files",
+      "expected_hyperedge": true
+    },
+    {
+      "id": "D-induced-access",
+      "change_id": "change-induced-001",
+      "description": "System-recommended access to unrelated document with low weight",
+      "expected_bounded_weight": true
+    }
+  ]
+}

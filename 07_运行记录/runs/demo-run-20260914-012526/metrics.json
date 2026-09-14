@@ -1,0 +1,7 @@
+{
+  "run_id": "demo-run-20260914-012526",
+  "recall_top_10": 1.0,
+  "stale_precision": 1.0,
+  "unapplied_proposals_count": 4,
+  "execution_mode": "propose_only"
+}

@@ -1,0 +1,22 @@
+--- a/docs/auth_design.md
++++ b/docs/auth_design.md
+@@ -5,8 +5,8 @@
+ 
+
+ ## Data Structure
+
+ The `UserContext` interface exposes the following primary fields:
+
+-- `user_id`: The unique system-wide identifier of the authenticated user.
+
++- `subject_id`: The unique system-wide identifier of the authenticated user.
+
+ - `tenant_id`: The organisation / tenant identifier.
+
+ - `roles`: List of RBAC roles assigned to this identity.
+
+ 
+
+-When downstream services validate authorization, they must extract `user_id` to look up permissions.
+
++When downstream services validate authorization, they must extract `subject_id` to look up permissions.

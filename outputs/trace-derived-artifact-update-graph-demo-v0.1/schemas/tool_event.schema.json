@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/daug/tool_event.schema.json",
+  "title": "Trace Derived Artifact Update Graph Tool Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "trace_id",
+    "repository_id",
+    "sequence_no",
+    "occurred_at",
+    "operation",
+    "result_status",
+    "access_origin",
+    "collector_version",
+    "payload_policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "daug.tool-event.v1"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "repository_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "sequence_no": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "parent_event_id": {
+      "type": ["string", "null"],
+      "maxLength": 128
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tool_name": {
+      "type": ["string", "null"],
+      "maxLength": 128
+    },
+    "operation": {
+      "enum": [
+        "read",
+        "search",
+        "edit",
+        "write",
+        "delete",
+        "test",
+        "execute",
+        "commit",
+        "approve",
+        "reject"
+      ]
+    },
+    "artifact_id": {
+      "type": ["string", "null"],
+      "maxLength": 256
+    },
+    "artifact_path": {
+      "type": ["string", "null"],
+      "maxLength": 2048,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).*$"
+    },
+    "target_selector": {
+      "type": ["string", "null"],
+      "maxLength": 512
+    },
+    "input_digest": {
+      "$ref": "#/$defs/sha256OrNull"
+    },
+    "output_digest": {
+      "$ref": "#/$defs/sha256OrNull"
+    },
+    "before_hash": {
+      "$ref": "#/$defs/sha256OrNull"
+    },
+    "after_hash": {
+      "$ref": "#/$defs/sha256OrNull"
+    },
+    "diff_digest": {
+      "$ref": "#/$defs/sha256OrNull"
+    },
+    "result_status": {
+      "enum": ["success", "failure", "cancelled", "unknown"]
+    },
+    "exit_code": {
+      "type": ["integer", "null"]
+    },
+    "access_origin": {
+      "enum": [
+        "organic",
+        "system_recommended",
+        "human_directed",
+        "replay",
+        "unknown"
+      ]
+    },
+    "recommendation_id": {
+      "type": ["string", "null"],
+      "maxLength": 128
+    },
+    "collector_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "payload_policy": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "trace_completeness": {
+      "enum": ["complete", "partial", "unknown"]
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "integer", "boolean", "null"]
+      },
+      "maxProperties": 32
+    }
+  },
+  "$defs": {
+    "sha256OrNull": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "enum": ["read", "edit", "write", "delete"]
+          }
+        }
+      },
+      "then": {
+        "required": ["artifact_id", "artifact_path"],
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "artifact_path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).*$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "edit"
+          },
+          "result_status": {
+            "const": "success"
+          }
+        },
+        "required": ["operation", "result_status"]
+      },
+      "then": {
+        "required": ["before_hash", "after_hash", "diff_digest"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "write"
+          },
+          "result_status": {
+            "const": "success"
+          }
+        },
+        "required": ["operation", "result_status"]
+      },
+      "then": {
+        "required": ["after_hash"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "access_origin": {
+            "const": "system_recommended"
+          }
+        },
+        "required": ["access_origin"]
+      },
+      "then": {
+        "required": ["recommendation_id"],
+        "properties": {
+          "recommendation_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

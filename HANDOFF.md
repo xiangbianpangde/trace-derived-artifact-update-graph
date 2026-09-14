@@ -99,13 +99,14 @@
 | SQLite WAL 事件账本 | **Tested** | 21 张表 DDL 执行通过，支持幂等去重与确定性回放 |
 | 轨迹校验与敏感脱敏 | **Tested** | Schema 校验完备，正则脱敏密钥与 Token |
 | 图构建与特征融合 | **Tested** | 融合 Static、Reference、Trace，支持超边与自强化抑制 |
-| 候选检索与特征解释 | **Tested on demo fixture** | 输出 Top-K 候选及 EdgeEvidence 解释树 |
-| 独立陈旧验证器 | **Tested on synthetic fixture** | 严格输出四值状态，负对照 0 误报，Span 准确定位 |
+| 候选检索与特征解释 | **Tested on demo fixture & real trace** | 输出 Top-K 候选及 EdgeEvidence 解释树，真实 GAP Trace 验证 0 AST 召回反转有效 |
+| 独立陈旧验证器 | **Tested on synthetic fixture & real code** | 严格输出四值状态，负对照 0 误报，Span 准确定位与动态 Symbol 漂移识别 |
 | 最小补丁提案生成器 | **Tested** | 绑定 Expected Target Hash，生成 Unified Diff |
-| 自动化测试套件 (12项) | **Tested** | `python3 -m unittest discover -s tests` 12 项 100% 通过 |
+| 补丁安全应用与回读校验 | **Tested with CAS Guard** | 严格受 CAS 预检防漂移保护，写回后执行回读 SHA-256 校验并生成审计凭据 |
+| 日常工程开发工具链 (CLI & Hook & CI) | **Tested** | `daug check`、`daug patch apply`、`daug hook install` 与 PR Check 工作流模板就绪 |
+| 自动化测试套件 (16项) | **Tested** | `python3 -m unittest discover -s tests` 16 项 100% 通过 (0.5s) |
 | 端到端演示演练 | **Tested** | `./bin/daug demo run` 成功落盘交互式报告与清单 |
-| 真实生产写回 | **Not implemented** | 严格锁定 `propose_only`，绝无生产自动写回 |
-| 生产环境授权 | **Not authorized** | 未经充分生产安全审计前不开放自治写回 |
+| 生产环境授权 | **Developer Tooling Ready (Manual Gate)** | 严格保留人工确认，未经开发者逐项复核授权绝无全自动写回 |
 
 ---
 
@@ -115,16 +116,35 @@
    ```bash
    ./bin/daug demo run
    ```
-2. **运行自动化测试套件**:
+2. **运行全量自动化测试套件**:
    ```bash
    python3 -m unittest discover -s tests -p "test_*.py" -v
    ```
-3. **单步调试命令**:
+3. **日常代码与文档陈旧检查 (`daug check`)**:
    ```bash
-   python3 -m daug init --db demo.sqlite
-   python3 -m daug trace ingest fixtures/traces/organic-interface-change.jsonl --db demo.sqlite
-   python3 -m daug graph build --db demo.sqlite
-   python3 -m daug candidates rank --change change-interface-001 --top-k 10 --db demo.sqlite
-   python3 -m daug verify --candidate-set <candidate_set_id> --db demo.sqlite
-   python3 -m daug patch propose --verification <verification_id> --db demo.sqlite
+   # 检查暂存区代码变动对应的陈旧文档
+   ./bin/daug check --staged --db demo.sqlite
+
+   # 检查指定文件并自动提议补丁
+   ./bin/daug check src/auth/user_context.ts --db demo.sqlite --propose
    ```
+4. **查看与应用补丁 (`daug patch`)**:
+   ```bash
+   # 查看当前待处理补丁列表
+   ./bin/daug patch list --db demo.sqlite
+
+   # 查看补丁差异内容
+   ./bin/daug patch show <patch_id> --db demo.sqlite
+
+   # 人工确认并应用补丁 (CAS 自动防护)
+   ./bin/daug patch apply <patch_id> --db demo.sqlite
+   ```
+5. **Git 预提交钩子管理 (`daug hook`)**:
+   ```bash
+   # 安装 pre-commit 钩子 (默认提醒模式，--strict 开启严格阻断)
+   ./bin/daug hook install
+
+   # 卸载 pre-commit 钩子
+   ./bin/daug hook uninstall
+   ```
+

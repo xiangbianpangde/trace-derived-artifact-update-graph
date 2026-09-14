@@ -8,9 +8,15 @@ from daug.ledger import Ledger, compute_json_digest, compute_sha256, compute_str
 VALID_STATUSES = {"VALID", "STALE", "UNCERTAIN", "NOT_APPLICABLE"}
 
 class StalenessVerifier:
-    def __init__(self, ledger: Ledger, verifier_version: str = "demo-verifier-0.1.0"):
+    def __init__(
+        self,
+        ledger: Ledger,
+        verifier_version: str = "demo-verifier-0.1.0",
+        repo_root_override: Optional[Path] = None
+    ):
         self.ledger = ledger
         self.verifier_version = verifier_version
+        self.repo_root_override = repo_root_override
 
     def verify_candidate(
         self,
@@ -38,7 +44,7 @@ class StalenessVerifier:
         if not row:
             raise ValueError(f"Candidate {candidate_id} not found")
 
-        repo_root = Path(row["canonical_root"])
+        repo_root = self.repo_root_override or Path(row["canonical_root"])
         target_file_path = repo_root / row["canonical_uri"]
 
         if not target_file_path.exists():
@@ -76,21 +82,43 @@ class StalenessVerifier:
                 target_artifact_id=row["target_artifact_id"]
             )
 
-        # Scenario A: Interface change (user_id -> subject_id)
-        # Check if target artifact claims/uses the obsolete symbol 'user_id'
+        # Dynamic symbol drift detection from diff if provided
+        drift_tokens = set()
+        if diff_text:
+            removed_tokens = set()
+            added_tokens = set()
+            for d_line in diff_text.splitlines():
+                if d_line.startswith("-") and not d_line.startswith("---"):
+                    tokens = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]{3,}\b", d_line)
+                    removed_tokens.update(tokens)
+                elif d_line.startswith("+") and not d_line.startswith("+++"):
+                    tokens = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]{3,}\b", d_line)
+                    added_tokens.update(tokens)
+            drift_tokens = removed_tokens - added_tokens
+            # Exclude common language keywords
+            common_kw = {"const", "function", "return", "import", "export", "class", "async", "await", "public", "private", "interface", "string", "number", "boolean"}
+            drift_tokens = {t for t in drift_tokens if t not in common_kw}
+
+        # Check for obsolete tokens in target
+        check_tokens = list(drift_tokens) if drift_tokens else []
         if "user_id" in target_text and change_type in ("interface", "schema"):
-            # Find spans
+            if "user_id" not in check_tokens:
+                check_tokens.append("user_id")
+
+        if check_tokens and change_type in ("interface", "schema", "behavior"):
             spans = []
             lines = target_text.splitlines()
             for line_idx, line in enumerate(lines, start=1):
-                if "user_id" in line:
-                    spans.append({
-                        "span_no": len(spans) + 1,
-                        "locator": f"line:{line_idx}",
-                        "claim_digest": compute_str_digest(line.strip()),
-                        "reason_code": "OBSOLETE_FIELD_REFERENCE",
-                        "evidence_ids_digest": compute_str_digest(f"diff_rename_user_id->subject_id:{line.strip()}")
-                    })
+                for token in check_tokens:
+                    if token in line:
+                        spans.append({
+                            "span_no": len(spans) + 1,
+                            "locator": f"line:{line_idx}",
+                            "claim_digest": compute_str_digest(line.strip()),
+                            "reason_code": "OBSOLETE_FIELD_REFERENCE" if token == "user_id" else "OBSOLETE_SYMBOL_REFERENCE",
+                            "evidence_ids_digest": compute_str_digest(f"drift_symbol:{token}:{line.strip()}")
+                        })
+                        break
 
             if spans:
                 return self._record_verification(
@@ -98,7 +126,7 @@ class StalenessVerifier:
                     target_hash=target_hash,
                     status="STALE",
                     confidence=0.95,
-                    evidence_digest=compute_json_digest({"spans_count": len(spans), "symbol": "user_id"}),
+                    evidence_digest=compute_json_digest({"spans_count": len(spans), "tokens": check_tokens}),
                     abstention_reason=None,
                     spans=spans,
                     canonical_uri=canonical_uri,

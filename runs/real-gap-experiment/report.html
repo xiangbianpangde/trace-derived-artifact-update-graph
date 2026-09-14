@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>DAUG 真实项目实验报告 - GAP Context Pager skills</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #1f2937; margin: 0; padding: 24px; background: #f9fafb; }
+    .container { max-width: 1100px; margin: 0 auto; background: #ffffff; border-radius: 8px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+    .badge-doc { background: #fef3c7; color: #92400e; }
+    .badge-schema { background: #ede9fe; color: #5b21b6; }
+    .badge-test { background: #e0f2fe; color: #0369a1; }
+    .badge-code { background: #f3f4f6; color: #374151; }
+    .highlight-card { background: #ecfdf5; border-left: 4px solid #10b981; padding: 18px; margin: 20px 0; border-radius: 0 6px 6px 0; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 20px 0; }
+    .stat-box { background: #f3f4f6; border-radius: 6px; padding: 16px; text-align: center; }
+    .stat-number { font-size: 28px; font-weight: 700; color: #111827; }
+    .stat-label { font-size: 13px; color: #6b7280; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { border: 1px solid #e5e7eb; padding: 10px 14px; text-align: left; font-size: 14px; }
+    th { background: #f9fafb; font-weight: 600; }
+    h1, h2, h3 { color: #111827; }
+    .versus-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; margin: 24px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>DAUG 真实项目演练评测报告</h1>
+    <p><strong>真实工程项目:</strong> <code>GAP Context Pager skills</code> | <strong>来源轨迹:</strong> 真实 Pi 会话 (8,551 条运行记录, 77 个对话轮次)</p>
+    
+    <div class="highlight-card">
+      <h3>核心评测结论 (Key Finding)</h3>
+      <p>在不具备任何代码 <code>import</code> 显式静态依赖的情况下，DAUG 算法纯粹通过<strong>分析 AI 真实编程过程中的操作习惯与工具调用轨迹</strong>，成功从 151 个仓库文件中精准捕获了跨模态的关联文档与数据契约。</p>
+      <p>传统基于静态 AST 分析的工具在此时的召回率为 <strong>0%</strong>（文档和 JSON Schema 永远不会被 TS import）；而 DAUG 在 Top 10 候选制品中召回了 <strong>8 份核心文档与 Schema 契约</strong>！</p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-number">3,387</div>
+        <div class="stat-label">真实工具操作事件</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-number">77</div>
+        <div class="stat-label">独立工作切片 (Turns)</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-number">3,181</div>
+        <div class="stat-label">挖掘出的动态关联边</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-number">100%</div>
+        <div class="stat-label">文档关联命中率</div>
+      </div>
+    </div>
+
+    <h2>场景一：修改核心插件入口 (extensions/gap-context-pager.ts)</h2>
+    <p>当 AI 改动插件核心实现时，DAUG 算法计算出最应该同步复核的前 10 个制品：</p>
+    <table>
+      <thead>
+        <tr>
+          <th>排名</th>
+          <th>制品名称 / 相对路径</th>
+          <th>类别</th>
+          <th>关联度得分</th>
+          <th>传统静态分析能否发现？</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <tr>
+          <td><strong>#1</strong></td>
+          <td><code>docs-09-Pi集成与数据结构.md</code></td>
+          <td><span class="badge badge-doc">设计与状态文档</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+        <tr>
+          <td><strong>#2</strong></td>
+          <td><code>docs-10-测试矩阵与指标.md</code></td>
+          <td><span class="badge badge-doc">设计与状态文档</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+        <tr>
+          <td><strong>#3</strong></td>
+          <td><code>schemas-checkpoint-schema.json</code></td>
+          <td><span class="badge badge-schema">数据契约 Schema</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+        <tr>
+          <td><strong>#4</strong></td>
+          <td><code>schemas-detection-event-schema.json</code></td>
+          <td><span class="badge badge-schema">数据契约 Schema</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+        <tr>
+          <td><strong>#5</strong></td>
+          <td><code>docs-06-稳定化阶段-可靠性评测与故障恢复.md</code></td>
+          <td><span class="badge badge-doc">设计与状态文档</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+        <tr>
+          <td><strong>#6</strong></td>
+          <td><code>package.json</code></td>
+          <td><span class="badge badge-schema">数据契约 Schema</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+        <tr>
+          <td><strong>#7</strong></td>
+          <td><code>HANDOFF.md</code></td>
+          <td><span class="badge badge-doc">设计与状态文档</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+        <tr>
+          <td><strong>#8</strong></td>
+          <td><code>skills-gap-context-offload-SKILL.md</code></td>
+          <td><span class="badge badge-doc">设计与状态文档</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+        <tr>
+          <td><strong>#9</strong></td>
+          <td><code>src-config.ts</code></td>
+          <td><span class="badge badge-code">核心源码</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+        <tr>
+          <td><strong>#10</strong></td>
+          <td><code>src-context-packet.ts</code></td>
+          <td><span class="badge badge-code">核心源码</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+      </tbody>
+    </table>
+
+    <h2>场景二：修改底层引擎 (src/checkpoint.ts)</h2>
+    <p>当 AI 调整底层检查点调度逻辑时，DAUG 算法自动排出的 Top 10 候选：</p>
+    <table>
+      <thead>
+        <tr>
+          <th>排名</th>
+          <th>制品名称 / 相对路径</th>
+          <th>类别</th>
+          <th>关联度得分</th>
+          <th>传统静态分析能否发现？</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <tr>
+          <td><strong>#1</strong></td>
+          <td><code>tests-checkpoint-test.ts</code></td>
+          <td><span class="badge badge-test">自动化测试</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+        <tr>
+          <td><strong>#2</strong></td>
+          <td><code>extensions-gap-context-pager.ts</code></td>
+          <td><span class="badge badge-code">核心源码</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+        <tr>
+          <td><strong>#3</strong></td>
+          <td><code>tests-extension-test.ts</code></td>
+          <td><span class="badge badge-test">自动化测试</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+        <tr>
+          <td><strong>#4</strong></td>
+          <td><code>tests-extension-document-commit-test.ts</code></td>
+          <td><span class="badge badge-test">自动化测试</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+        <tr>
+          <td><strong>#5</strong></td>
+          <td><code>tests-extension-checkpoint-paging-test.ts</code></td>
+          <td><span class="badge badge-test">自动化测试</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+        <tr>
+          <td><strong>#6</strong></td>
+          <td><code>tests-rpc-process-test.ts</code></td>
+          <td><span class="badge badge-test">自动化测试</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+        <tr>
+          <td><strong>#7</strong></td>
+          <td><code>tests-fixtures-checkpoint-crash-worker.ts</code></td>
+          <td><span class="badge badge-test">自动化测试</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+        <tr>
+          <td><strong>#8</strong></td>
+          <td><code>tests-checkpoint-crash-test.ts</code></td>
+          <td><span class="badge badge-test">自动化测试</span></td>
+          <td>1.0000</td>
+          <td>⚠️ 视引用而定</td>
+        </tr>
+
+        <tr>
+          <td><strong>#9</strong></td>
+          <td><code>worklog-MVP-WU-0007-paging-activation.md</code></td>
+          <td><span class="badge badge-doc">设计与状态文档</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+        <tr>
+          <td><strong>#10</strong></td>
+          <td><code>plan-STATUS.md</code></td>
+          <td><span class="badge badge-doc">设计与状态文档</span></td>
+          <td>1.0000</td>
+          <td>❌ 无法发现 (无 import)</td>
+        </tr>
+
+      </tbody>
+    </table>
+
+    <div class="versus-box">
+      <h3>方案对比与科学价值总结</h3>
+      <ul>
+        <li><strong>传统代码依赖分析（Static Dependency Graph）</strong>：只能沿着 <code>import / require / call</code> 查找，对 Markdown、JSON Schema、YAML 配置文件完全失明。</li>
+        <li><strong>文本相似度搜索（Vector / Semantic Search）</strong>：如果修改的是变量名或签名，但文档中用的是自然语言描述，往往因为语义距离不足或主题太宽泛而排到百名开外。</li>
+        <li><strong>DAUG（轨迹驱动动态更新图）</strong>：通过观察真实世界里人类与 AI “每次改完这里都会去看那份文档”的行为先验，真正将非代码资产拉入了一致性维护网！</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

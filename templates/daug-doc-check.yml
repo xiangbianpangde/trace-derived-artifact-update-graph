@@ -1,0 +1,84 @@
+name: DAUG Documentation Staleness Check
+
+on:
+  pull_request:
+    branches: [main, master, dev]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-doc-staleness:
+    name: Check Documentation Staleness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache DAUG Ledger
+        uses: actions/cache@v4
+        with:
+          path: .daug
+          key: daug-ledger-${{ runner.os }}-${{ hashFiles('**/*.ts', '**/*.py', '**/*.go', '**/*.rs') }}
+          restore-keys: |
+            daug-ledger-${{ runner.os }}-
+
+      - name: Detect Changed Files & Run DAUG Staleness Check
+        id: daug_check
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          echo "Changed files in PR:"
+          echo "$CHANGED_FILES"
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No changed files detected in this PR."
+            exit 0
+          fi
+
+          # Run DAUG check
+          python3 bin/daug check $CHANGED_FILES --json > daug_report.json || true
+          cat daug_report.json
+
+          TOTAL_STALE=$(python3 -c "import json; data=json.load(open('daug_report.json')); print(data.get('total_stale', 0))")
+          echo "total_stale=$TOTAL_STALE" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR if Documentation Stale
+        if: steps.daug_check.outputs.total_stale != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('daug_report.json', 'utf8'));
+            
+            let body = `### ⚠️ DAUG Documentation Staleness Warning\n\n`;
+            body += `This Pull Request modifies code that has dynamic behavioral dependencies on documentation or contracts in the artifact update graph. The following document(s) appear to be **outdated**:\n\n`;
+            
+            for (const item of report.inspections) {
+              const staleCandidates = (item.candidates || []).filter(c => c.status === 'STALE');
+              if (staleCandidates.length > 0) {
+                body += `#### Modified Source: \`${item.file}\`\n`;
+                for (const c of staleCandidates) {
+                  body += `- **Stale Document**: \`${c.target_uri}\` (confidence: ${c.confidence})\n`;
+                  for (const span of (c.spans || [])) {
+                    body += `  - \`${span.locator}\`: ${span.reason_code}\n`;
+                  }
+                  if (c.patch) {
+                    body += `  - *Proposed Patch available via DAUG CLI*\n`;
+                  }
+                }
+              }
+            }
+            body += `\n*Please review whether these documents or contracts need updating before merging.*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

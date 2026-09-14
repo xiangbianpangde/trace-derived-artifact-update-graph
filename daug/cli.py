@@ -1,5 +1,8 @@
 import argparse
+import json
 import os
+import re
+import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -31,8 +34,12 @@ def cmd_init(args):
 
     # Register all files in repo_root
     count = 0
-    for root, _, files in os.walk(repo_root):
+    ignored_dirs = {".git", "node_modules", ".pi", "dist", "build", "coverage", ".next"}
+    for root, dirs, files in os.walk(repo_root):
+        dirs[:] = [d for d in dirs if d not in ignored_dirs]
         for f in files:
+            if f.startswith(".") or f == ".DS_Store":
+                continue
             p = Path(root) / f
             rel = str(p.relative_to(repo_root))
             kind = "documentation" if rel.endswith(".md") else ("test" if "test" in rel else "source_code")
@@ -111,6 +118,442 @@ def cmd_patch_propose(args):
     print(f"  Expected target hash: {p['expected_target_hash']}")
     print(f"  Minimality check: {p['minimality_check']}")
     print(f"  Policy action: {p['policy_decision']['action']} ({p['policy_decision']['reason_code']})")
+
+def cmd_patch_list(args):
+    ledger = get_ledger(args.db)
+    patcher = PatchProposer(ledger)
+    patches = patcher.list_patches(status=getattr(args, "status", None))
+    if not patches:
+        print(f"[patch-list] No patch proposals found in '{args.db}'.")
+        return 0
+    print(f"[patch-list] Found {len(patches)} patch proposal(s):")
+    for p in patches:
+        print(f"  - {p['patch_id']} | Status: {p['status']} | Target: {p['canonical_uri']} | Created: {p['created_at']}")
+    return 0
+
+def cmd_patch_show(args):
+    ledger = get_ledger(args.db)
+    patcher = PatchProposer(ledger)
+    diff = patcher.get_patch_diff(args.patch_id)
+    if not diff:
+        print(f"[patch-show] No diff payload found for patch '{args.patch_id}'.", file=sys.stderr)
+        return 1
+    print(diff)
+    return 0
+
+def cmd_patch_apply(args):
+    ledger = get_ledger(args.db)
+    repo_override = Path(args.repo_root).resolve() if getattr(args, "repo_root", None) else None
+    patcher = PatchProposer(ledger, repo_root_override=repo_override)
+    patch_id = args.patch_id
+
+    diff_text = patcher.get_patch_diff(patch_id)
+    if not diff_text:
+        print(f"[patch-apply] Error: Patch payload for '{patch_id}' not found in database.", file=sys.stderr)
+        return 1
+
+    cursor = ledger.conn.cursor()
+    row = cursor.execute(
+        """
+        SELECT p.patch_id, p.expected_target_hash, a.canonical_uri, r.canonical_root
+        FROM patch_proposal p
+        JOIN artifact a ON p.target_artifact_id = a.artifact_id
+        JOIN repository r ON a.repository_id = r.repository_id
+        WHERE p.patch_id = ?
+        """,
+        (patch_id,)
+    ).fetchone()
+
+    if not row:
+        print(f"[patch-apply] Error: Patch '{patch_id}' not found in database.", file=sys.stderr)
+        return 1
+
+    effective_root = repo_override or Path(row["canonical_root"])
+    file_path = effective_root / row["canonical_uri"]
+
+    print("=" * 65)
+    print(f"DAUG Patch Review: {patch_id}")
+    print(f"Target file:   {file_path}")
+    print(f"Expected hash: {row['expected_target_hash']}")
+    print("=" * 65)
+    print(diff_text)
+    print("=" * 65)
+
+    if not getattr(args, "yes", False):
+        try:
+            confirm = input(f"Apply this patch to '{row['canonical_uri']}'? [y/N]: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print("\nPatch application cancelled.")
+            return 1
+
+        if confirm not in ("y", "yes"):
+            print("Patch application cancelled by user.")
+            return 0
+
+    try:
+        receipt = patcher.apply_patch(patch_id)
+    except Exception as e:
+        print(f"[patch-apply] Error: {e}", file=sys.stderr)
+        return 1
+
+    print(f"[patch-apply] Successfully applied patch '{patch_id}' to {receipt['target_file']}.")
+    print(f"  Attempt ID:       {receipt['attempt_id']}")
+    print(f"  Receipt ID:       {receipt['receipt_id']}")
+    print(f"  Before Hash:      {receipt['before_hash'][:16]}...")
+    print(f"  After Hash:       {receipt['after_hash'][:16]}...")
+    print(f"  Readback status:  {receipt['readback_status']}")
+    return 0
+
+def cmd_check(args):
+    # 1. Determine repo root
+    repo_root = None
+    if getattr(args, "repo_root", None):
+        repo_root = Path(args.repo_root).resolve()
+    else:
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, check=True
+            )
+            repo_root = Path(res.stdout.strip()).resolve()
+        except Exception:
+            repo_root = Path.cwd().resolve()
+
+    # 2. Determine changed files
+    input_files = list(getattr(args, "files", []) or [])
+    if getattr(args, "files_opt", None):
+        input_files.extend(args.files_opt)
+
+    changed_files = []
+    if input_files:
+        for f in input_files:
+            p = Path(f)
+            if not p.is_absolute():
+                p = (repo_root / p).resolve()
+            try:
+                rel = str(p.relative_to(repo_root))
+            except ValueError:
+                rel = str(p)
+            changed_files.append(rel)
+    else:
+        if getattr(args, "staged", False):
+            try:
+                res = subprocess.run(["git", "diff", "--name-only", "--cached"], capture_output=True, text=True, cwd=str(repo_root))
+                changed_files = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+            except Exception:
+                pass
+        elif getattr(args, "uncommitted", False):
+            try:
+                res = subprocess.run(["git", "diff", "--name-only", "HEAD"], capture_output=True, text=True, cwd=str(repo_root))
+                changed_files = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+            except Exception:
+                pass
+        else:
+            try:
+                res_staged = subprocess.run(["git", "diff", "--name-only", "--cached"], capture_output=True, text=True, cwd=str(repo_root))
+                staged = [line.strip() for line in res_staged.stdout.splitlines() if line.strip()]
+                if staged:
+                    changed_files = staged
+                else:
+                    res_unstaged = subprocess.run(["git", "diff", "--name-only"], capture_output=True, text=True, cwd=str(repo_root))
+                    changed_files = [line.strip() for line in res_unstaged.stdout.splitlines() if line.strip()]
+            except Exception:
+                pass
+
+    if not changed_files:
+        if getattr(args, "json", False):
+            print(json.dumps({"status": "clean", "message": "No modified files detected", "inspections": []}))
+        else:
+            print("[check] No modified files detected in repository.")
+        return 0
+
+    # 3. Locate database
+    db_path = None
+    if getattr(args, "db", None):
+        db_path = Path(args.db).resolve()
+    else:
+        candidates = [
+            repo_root / ".daug.sqlite",
+            repo_root / ".daug" / "ledger.sqlite",
+            Path.cwd() / "gap-demo.sqlite",
+            Path.cwd() / "demo.sqlite",
+            BASE_DIR / "gap-demo.sqlite",
+            BASE_DIR / "demo.sqlite"
+        ]
+        for c in candidates:
+            if c.exists():
+                db_path = c
+                break
+
+    if not db_path or not db_path.exists():
+        err_msg = "[check] Error: No DAUG ledger database found. Specify --db or run 'daug init' first."
+        if getattr(args, "json", False):
+            print(json.dumps({"error": err_msg}))
+        else:
+            print(err_msg, file=sys.stderr)
+        return 1
+
+    ledger = get_ledger(str(db_path))
+    cursor = ledger.conn.cursor()
+
+    latest_graph = cursor.execute(
+        "SELECT graph_version FROM graph_snapshot WHERE status='published' ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    if not latest_graph:
+        err_msg = f"[check] Error: No published graph snapshot found in '{db_path}'. Run 'daug graph build' first."
+        if getattr(args, "json", False):
+            print(json.dumps({"error": err_msg}))
+        else:
+            print(err_msg, file=sys.stderr)
+        return 1
+
+    graph_version = latest_graph["graph_version"]
+
+    repo_override = Path(args.repo_root).resolve() if getattr(args, "repo_root", None) else None
+    retriever = CandidateRetriever(ledger, minimum_score=0.15)
+    verifier = StalenessVerifier(ledger, repo_root_override=repo_override)
+    patcher = PatchProposer(ledger, repo_root_override=repo_override)
+
+    inspected_results = []
+    total_stale = 0
+
+    for file_rel in changed_files:
+        art_row = cursor.execute(
+            "SELECT * FROM artifact WHERE canonical_uri = ?", (file_rel,)
+        ).fetchone()
+        if not art_row:
+            art_row = cursor.execute(
+                "SELECT * FROM artifact WHERE canonical_uri LIKE ? ORDER BY LENGTH(canonical_uri) ASC LIMIT 1",
+                (f"%{file_rel}",)
+            ).fetchone()
+
+        if not art_row:
+            inspected_results.append({
+                "file": file_rel,
+                "artifact_id": None,
+                "status": "untracked_by_daug",
+                "candidates": []
+            })
+            continue
+
+        art_id = art_row["artifact_id"]
+
+        # Fetch git diff snippet for this file if available
+        file_diff = None
+        try:
+            diff_cmd = ["git", "diff", "--cached", "--", file_rel] if getattr(args, "staged", False) else ["git", "diff", "HEAD", "--", file_rel]
+            res_diff = subprocess.run(diff_cmd, capture_output=True, text=True, cwd=str(repo_root))
+            if res_diff.stdout.strip():
+                file_diff = res_diff.stdout
+            else:
+                res_diff2 = subprocess.run(["git", "diff", "--", file_rel], capture_output=True, text=True, cwd=str(repo_root))
+                file_diff = res_diff2.stdout if res_diff2.stdout.strip() else None
+        except Exception:
+            pass
+
+        change_row = cursor.execute(
+            "SELECT change_id FROM change_event WHERE source_artifact_id = ? ORDER BY occurred_at DESC LIMIT 1",
+            (art_id,)
+        ).fetchone()
+
+        if change_row:
+            change_id = change_row["change_id"]
+        else:
+            change_type = "interface" if not file_rel.endswith(".md") else "documentation"
+            change_id = f"change-auto-{art_id[:16]}-{uuid.uuid4().hex[:6]}"
+            ledger.record_change_event(
+                change_id=change_id,
+                source_artifact_id=art_id,
+                change_type=change_type,
+                impact_score=0.8,
+                scope="file"
+            )
+
+        try:
+            cand_set = retriever.rank_candidates(change_id, graph_version=graph_version, top_k=5)
+            # Verify each candidate, passing file_diff
+            cursor2 = ledger.conn.cursor()
+            cands = cursor2.execute(
+                "SELECT candidate_id FROM update_candidate WHERE candidate_set_id=? ORDER BY rank",
+                (cand_set["candidate_set_id"],)
+            ).fetchall()
+            verifs = [verifier.verify_candidate(c["candidate_id"], diff_text=file_diff) for c in cands]
+        except Exception as e:
+            inspected_results.append({
+                "file": file_rel,
+                "artifact_id": art_id,
+                "status": "retrieval_error",
+                "error": str(e),
+                "candidates": []
+            })
+            continue
+
+        file_candidates = []
+        for v in verifs:
+            is_stale = (v["status"] == "STALE")
+            if is_stale:
+                total_stale += 1
+
+            patch_info = None
+            if is_stale and getattr(args, "propose", False):
+                try:
+                    patch_info = patcher.propose_patch(v["verification_id"])
+                except Exception:
+                    pass
+
+            file_candidates.append({
+                "candidate_id": v["candidate_id"],
+                "target_artifact_id": v["target_artifact_id"],
+                "target_uri": v["canonical_uri"],
+                "status": v["status"],
+                "confidence": v["confidence"],
+                "spans": v["spans"],
+                "patch": patch_info
+            })
+
+        inspected_results.append({
+            "file": file_rel,
+            "artifact_id": art_id,
+            "status": "stale_found" if any(c["status"] == "STALE" for c in file_candidates) else "ok",
+            "candidates": file_candidates
+        })
+
+    if getattr(args, "json", False):
+        out = {
+            "database": str(db_path),
+            "graph_version": graph_version,
+            "total_files": len(changed_files),
+            "total_stale": total_stale,
+            "inspections": inspected_results
+        }
+        print(json.dumps(out, indent=2))
+    else:
+        print("=" * 65)
+        print("DAUG Staleness Check")
+        print(f"Database: {db_path.name} | Graph Version: {graph_version}")
+        print("=" * 65)
+        for item in inspected_results:
+            print(f"\n[CHANGED] {item['file']}")
+            if item.get("status") == "untracked_by_daug":
+                print("  (File is not currently indexed in DAUG artifact graph)")
+                continue
+
+            stale_items = [c for c in item["candidates"] if c["status"] == "STALE"]
+            valid_items = [c for c in item["candidates"] if c["status"] == "VALID"]
+
+            if stale_items:
+                print(f"  -> WARNING: {len(stale_items)} document/contract is STALE:")
+                for sc in stale_items:
+                    print(f"     * [STALE] {sc['target_uri']} (confidence: {sc['confidence']:.2f})")
+                    for sp in sc.get("spans", []):
+                        print(f"       - {sp['locator']}: {sp['reason_code']}")
+                    if sc.get("patch"):
+                        p = sc["patch"]
+                        print(f"       [Proposed Patch] {p['patch_id']} (Run 'daug patch apply {p['patch_id']}' to apply)")
+            elif valid_items:
+                print(f"  -> Up to date: {len(valid_items)} related document(s) verified consistent.")
+            else:
+                print("  -> No related documents mapped in graph.")
+
+        print("\n" + "-" * 65)
+        print(f"Summary: {len(changed_files)} file(s) checked, {total_stale} stale document(s) flagged.")
+        if total_stale > 0:
+            print("Tip: Review flagged documents above before committing or merging.")
+        print("-" * 65)
+
+    if total_stale > 0 and getattr(args, "fail_on_stale", False):
+        return 1
+    return 0
+
+HOOK_MARKER_BEGIN = "# --- DAUG HOOK BEGIN ---"
+HOOK_MARKER_END = "# --- DAUG HOOK END ---"
+
+def cmd_hook_install(args):
+    repo_root = getattr(args, "repo", None)
+    if not repo_root:
+        try:
+            res = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True)
+            repo_root = Path(res.stdout.strip())
+        except Exception:
+            repo_root = Path.cwd()
+    else:
+        repo_root = Path(repo_root).resolve()
+
+    git_dir = repo_root / ".git"
+    if not git_dir.exists():
+        print(f"[hook-install] Error: '{repo_root}' is not a git repository (.git directory not found).", file=sys.stderr)
+        return 1
+
+    hook_type = getattr(args, "type", "pre-commit")
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook_file = hooks_dir / hook_type
+
+    fail_flag = "--fail-on-stale" if getattr(args, "strict", False) else ""
+    hook_script_body = f"""{HOOK_MARKER_BEGIN}
+# Trace-Derived Artifact Update Graph (DAUG) {hook_type} hook
+# Warns or blocks when code changes leave documentation or contracts stale.
+if command -v daug >/dev/null 2>&1; then
+    daug check --staged {fail_flag}
+elif [ -f "./bin/daug" ]; then
+    ./bin/daug check --staged {fail_flag}
+elif [ -f "../bin/daug" ]; then
+    ../bin/daug check --staged {fail_flag}
+fi
+{HOOK_MARKER_END}
+"""
+
+    existing_content = ""
+    if hook_file.exists():
+        existing_content = hook_file.read_text(encoding="utf-8")
+
+    if HOOK_MARKER_BEGIN in existing_content:
+        pattern = re.compile(rf"{re.escape(HOOK_MARKER_BEGIN)}.*?{re.escape(HOOK_MARKER_END)}\n?", re.DOTALL)
+        new_content = pattern.sub(hook_script_body, existing_content)
+    else:
+        header = "#!/bin/sh\n\n" if not existing_content.startswith("#!") else ""
+        new_content = header + existing_content + ("\n" if existing_content and not existing_content.endswith("\n") else "") + hook_script_body
+
+    hook_file.write_text(new_content, encoding="utf-8")
+    current_mode = hook_file.stat().st_mode
+    hook_file.chmod(current_mode | 0o755)
+
+    mode_desc = "strict (blocks commit if stale)" if getattr(args, "strict", False) else "warn-only (prints warning without blocking)"
+    print(f"[hook-install] Installed DAUG '{hook_type}' hook in '{hook_file}' ({mode_desc}).")
+    return 0
+
+def cmd_hook_uninstall(args):
+    repo_root = getattr(args, "repo", None)
+    if not repo_root:
+        try:
+            res = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True)
+            repo_root = Path(res.stdout.strip())
+        except Exception:
+            repo_root = Path.cwd()
+    else:
+        repo_root = Path(repo_root).resolve()
+
+    hook_type = getattr(args, "type", "pre-commit")
+    hook_file = repo_root / ".git" / "hooks" / hook_type
+    if not hook_file.exists():
+        print(f"[hook-uninstall] No hook found at '{hook_file}'.")
+        return 0
+
+    content = hook_file.read_text(encoding="utf-8")
+    if HOOK_MARKER_BEGIN not in content:
+        print(f"[hook-uninstall] No DAUG hook block found in '{hook_file}'.")
+        return 0
+
+    pattern = re.compile(rf"{re.escape(HOOK_MARKER_BEGIN)}.*?{re.escape(HOOK_MARKER_END)}\n?", re.DOTALL)
+    new_content = pattern.sub("", content).strip()
+
+    if not new_content or new_content == "#!/bin/sh":
+        hook_file.unlink()
+        print(f"[hook-uninstall] Removed DAUG hook file '{hook_file}'.")
+    else:
+        hook_file.write_text(new_content + "\n", encoding="utf-8")
+        print(f"[hook-uninstall] Removed DAUG hook section from '{hook_file}'.")
+    return 0
 
 def cmd_demo_run(args):
     print("=" * 70)
@@ -285,12 +728,52 @@ def main():
     p_ver.add_argument("--candidate-set", required=True, help="Candidate set ID")
     p_ver.add_argument("--db", default="demo.sqlite", help="SQLite database path")
 
-    # patch propose
-    p_patch = subparsers.add_parser("patch", help="Patch commands")
+    # patch
+    p_patch = subparsers.add_parser("patch", help="Patch commands (propose, list, show, apply)")
     p_patch_sub = p_patch.add_subparsers(dest="patch_command")
+    
     p_pp = p_patch_sub.add_parser("propose", help="Propose minimal patch")
     p_pp.add_argument("--verification", required=True, help="Verification ID")
     p_pp.add_argument("--db", default="demo.sqlite", help="SQLite database path")
+
+    p_pl = p_patch_sub.add_parser("list", help="List proposed patches")
+    p_pl.add_argument("--status", default=None, help="Filter by status (e.g. proposed, applied)")
+    p_pl.add_argument("--db", default="demo.sqlite", help="SQLite database path")
+
+    p_ps = p_patch_sub.add_parser("show", help="Show patch diff")
+    p_ps.add_argument("patch_id", help="Patch ID to show")
+    p_ps.add_argument("--db", default="demo.sqlite", help="SQLite database path")
+
+    p_pa = p_patch_sub.add_parser("apply", help="Apply proposed patch to disk with CAS verification")
+    p_pa.add_argument("patch_id", help="Patch ID to apply")
+    p_pa.add_argument("-y", "--yes", action="store_true", help="Apply without interactive confirmation")
+    p_pa.add_argument("--db", default="demo.sqlite", help="SQLite database path")
+    p_pa.add_argument("--repo-root", default=None, help="Override repository root path")
+
+    # check
+    p_check = subparsers.add_parser("check", help="Check modified files against documentation update graph")
+    p_check.add_argument("files", nargs="*", help="Specific files to check (defaults to git changes)")
+    p_check.add_argument("--files", nargs="+", dest="files_opt", help="Explicit list of files to check")
+    p_check.add_argument("--staged", action="store_true", help="Check git staged changes only")
+    p_check.add_argument("--uncommitted", action="store_true", help="Check all uncommitted git changes (HEAD)")
+    p_check.add_argument("--db", default=None, help="SQLite database path (auto-discovered if omitted)")
+    p_check.add_argument("--repo-root", default=None, help="Repository root path")
+    p_check.add_argument("--json", action="store_true", help="Output results in JSON format")
+    p_check.add_argument("--fail-on-stale", action="store_true", help="Exit with non-zero code if stale documents found")
+    p_check.add_argument("--propose", action="store_true", help="Automatically generate patch proposals for stale documents")
+
+    # hook
+    p_hook = subparsers.add_parser("hook", help="Git hook management (install, uninstall)")
+    p_hook_sub = p_hook.add_subparsers(dest="hook_command")
+    
+    p_hi = p_hook_sub.add_parser("install", help="Install git hook")
+    p_hi.add_argument("--repo", default=None, help="Repository path (defaults to current git repo)")
+    p_hi.add_argument("--type", default="pre-commit", choices=["pre-commit", "pre-push"], help="Hook type")
+    p_hi.add_argument("--strict", action="store_true", help="Block commits if stale docs found (default: warn only)")
+
+    p_hu = p_hook_sub.add_parser("uninstall", help="Uninstall git hook")
+    p_hu.add_argument("--repo", default=None, help="Repository path (defaults to current git repo)")
+    p_hu.add_argument("--type", default="pre-commit", choices=["pre-commit", "pre-push"], help="Hook type")
 
     # demo run
     p_demo = subparsers.add_parser("demo", help="Demo commands")
@@ -302,6 +785,8 @@ def main():
     args = parser.parse_args()
     if args.command == "init":
         cmd_init(args)
+    elif args.command == "check":
+        sys.exit(cmd_check(args))
     elif args.command == "trace" and getattr(args, "trace_command", None) == "ingest":
         cmd_trace_ingest(args)
     elif args.command == "graph" and getattr(args, "graph_command", None) == "build":
@@ -310,8 +795,26 @@ def main():
         cmd_candidates_rank(args)
     elif args.command == "verify":
         cmd_verify(args)
-    elif args.command == "patch" and getattr(args, "patch_command", None) == "propose":
-        cmd_patch_propose(args)
+    elif args.command == "patch":
+        p_cmd = getattr(args, "patch_command", None)
+        if p_cmd == "propose":
+            cmd_patch_propose(args)
+        elif p_cmd == "apply":
+            sys.exit(cmd_patch_apply(args))
+        elif p_cmd == "list":
+            sys.exit(cmd_patch_list(args))
+        elif p_cmd == "show":
+            sys.exit(cmd_patch_show(args))
+        else:
+            p_patch.print_help()
+    elif args.command == "hook":
+        h_cmd = getattr(args, "hook_command", None)
+        if h_cmd == "install":
+            sys.exit(cmd_hook_install(args))
+        elif h_cmd == "uninstall":
+            sys.exit(cmd_hook_uninstall(args))
+        else:
+            p_hook.print_help()
     elif args.command == "demo" and getattr(args, "demo_command", None) == "run":
         cmd_demo_run(args)
     else:

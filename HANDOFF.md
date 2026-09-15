@@ -107,10 +107,11 @@
 | 最小补丁提案生成器 | **Tested** | 绑定 Expected Target Hash，基于动态符号对应生成 Unified Diff（无硬编码） |
 | 补丁安全应用与回读校验 | **Tested with CAS Guard** | 严格受 CAS 预检防漂移保护，写回后执行回读 SHA-256 校验并生成审计凭据 |
 | 日常工程开发工具链 (CLI & Hook & CI) | **Tested** | `daug check`、`daug patch apply`、`daug hook install` 与 PR Check 工作流模板就绪 |
-| Pi Coding Agent 插件扩展 | **Tested in Pi Runtime** | `extensions/daug.ts` 与 `~/.pi/agent/extensions/daug.ts` 已通过 Pi 运行时加载验证 |
-| 自动化测试套件 (25项) | **Tested** | `python3 -m unittest discover -s tests` 25 项 100% 通过 (0.28s) |
-| 学术基准与消融对比实验 | **Benchmarked & Validated** | RQ1~RQ5 消融实验完备，量化验证工具轨迹相较于纯 AST (0%) 的显著增益 |
-| 学术论文 A 草案 | **Drafted** | 12 章完整中英文标准架构论文草案落盘 (05_研究资产/reports/02_论文A草案_Trace_Derived_Update_Obligations.md) |
+| 交互式 Web 审查工作台 (P2) | **Tested & Deployed** | `./bin/daug review` 启动本地审查工作台，支持分栏 Diff 查看、单次批准门禁与 CAS 原子回读 |
+| Pi Coding Agent 插件扩展 | **Tested in Pi Runtime** | `extensions/daug.ts` 与 `~/.pi/agent/extensions/daug.ts` 已支持 `/daug review` 与实时阻断 |
+| 自动化测试套件 (28项) | **Tested** | `python3 -m unittest discover -s tests` 28 项 100% 通过 (0.35s) |
+| 学术基准与消融对比实验 (P1) | **Benchmarked & Validated** | RQ1~RQ5 消融实验完备，量化验证工具轨迹相较于纯 AST (0%) 的显著增益 |
+| 学术论文 A / B 规划与草案 | **Drafted** | 论文 A 12 章完整初稿与论文 B 详细规划全部落盘归档至 05_研究资产 |
 | 端到端演示演练 | **Tested** | `./bin/daug demo run` 成功落盘交互式报告与清单 |
 | 生产环境授权 | **Developer Tooling Ready (Manual Gate)** | 严格保留人工确认，未经开发者逐项复核授权绝无全自动写回 |
 

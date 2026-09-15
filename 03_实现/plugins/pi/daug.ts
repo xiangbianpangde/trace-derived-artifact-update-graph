@@ -325,6 +325,7 @@ export default function daugExtension(pi: ExtensionAPI) {
 				{ value: "apply", label: "apply <patch_id> — Safely apply patch with CAS verification" },
 				{ value: "hook install", label: "hook install — Install git pre-commit staleness check hook" },
 				{ value: "hook uninstall", label: "hook uninstall — Uninstall git pre-commit hook" },
+				{ value: "review", label: "review — Launch interactive Web Review Dashboard (P2 deployment)" },
 				{ value: "status", label: "status — Display DAUG database and graph snapshot info" },
 				{ value: "on", label: "on — Enable DAUG live monitoring for this session" },
 				{ value: "off", label: "off — Disable DAUG live monitoring for this session" },
@@ -406,6 +407,13 @@ export default function daugExtension(pi: ExtensionAPI) {
 				const action = tokens[1] ?? "install";
 				const res = await runDaug(ctx.cwd, ["hook", action]);
 				ctx.ui.notify(res.stdout || res.stderr, res.code === 0 ? "info" : "error");
+				return;
+			}
+
+			if (sub === "review") {
+				const port = tokens[1] ?? "8484";
+				ctx.ui.notify(`Launching DAUG Web Review Dashboard on http://127.0.0.1:${port}/ ...`, "info");
+				runDaug(ctx.cwd, ["review", "--port", port]);
 				return;
 			}
 

@@ -204,6 +204,49 @@ def cmd_patch_propose(args):
     print(f"  Minimality check: {p['minimality_check']}")
     print(f"  Policy action: {p['policy_decision']['action']} ({p['policy_decision']['reason_code']})")
 
+def cmd_review(args):
+    from daug.server import start_review_server
+    # 1. Determine repo root
+    repo_root = None
+    if getattr(args, "repo_root", None):
+        repo_root = Path(args.repo_root).resolve()
+    else:
+        try:
+            res = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True)
+            repo_root = Path(res.stdout.strip()).resolve()
+        except Exception:
+            repo_root = Path.cwd().resolve()
+
+    # 2. Determine db path
+    db_path = None
+    if getattr(args, "db", None):
+        db_path = Path(args.db).resolve()
+    else:
+        candidates = [
+            repo_root / ".daug.sqlite",
+            repo_root / ".daug" / "ledger.sqlite",
+            Path.cwd() / "gap-demo.sqlite",
+            Path.cwd() / "demo.sqlite",
+            BASE_DIR / "gap-demo.sqlite",
+            BASE_DIR / "demo.sqlite"
+        ]
+        for c in candidates:
+            if c.exists():
+                db_path = c
+                break
+
+    if not db_path or not db_path.exists():
+        print("[review] Error: No DAUG ledger database found. Specify --db or run 'daug init' first.", file=sys.stderr)
+        return 1
+
+    start_review_server(
+        repo_root=repo_root,
+        db_path=db_path,
+        port=args.port,
+        open_browser=not args.no_browser
+    )
+    return 0
+
 def cmd_patch_list(args):
     ledger = get_ledger(args.db)
     patcher = PatchProposer(ledger)
@@ -870,6 +913,13 @@ def main():
     p_hu.add_argument("--repo", default=None, help="Repository path (defaults to current git repo)")
     p_hu.add_argument("--type", default="pre-commit", choices=["pre-commit", "pre-push"], help="Hook type")
 
+    # review
+    p_rev = subparsers.add_parser("review", help="Start interactive Web Review Dashboard (P2 human-in-the-loop deployment)")
+    p_rev.add_argument("--port", type=int, default=8484, help="HTTP port (default 8484)")
+    p_rev.add_argument("--db", default=None, help="SQLite database path")
+    p_rev.add_argument("--repo-root", default=None, help="Repository root path")
+    p_rev.add_argument("--no-browser", action="store_true", help="Do not automatically open browser")
+
     # demo run
     p_demo = subparsers.add_parser("demo", help="Demo commands")
     p_demo_sub = p_demo.add_subparsers(dest="demo_command")
@@ -916,6 +966,8 @@ def main():
             sys.exit(cmd_hook_uninstall(args))
         else:
             p_hook.print_help()
+    elif args.command == "review":
+        sys.exit(cmd_review(args))
     elif args.command == "demo" and getattr(args, "demo_command", None) == "run":
         cmd_demo_run(args)
     else:

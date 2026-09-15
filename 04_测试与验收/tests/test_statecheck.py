@@ -75,6 +75,35 @@ class TestStatecheck(unittest.TestCase):
         )
         self.assertEqual(findings, [])
 
+    def test_multiple_items_on_one_line_pair_status_by_proximity(self):
+        """
+        Regression: a line listing several work items must bind each status word
+        to the nearest preceding item. Pairing every item with the line's first
+        status word previously produced a false positive when a later item on
+        the same line carried a different status.
+        """
+        known = {"WU-0011": "verified", "WU-0012": "verified", "WU-0013": "active"}
+        line = "第二阶段 WU-0011 与 WU-0012 均已置为 verified；WU-0013 处于 active，等待放行。\n"
+        findings = StateClaimScanner.scan_work_item_status_claims(line, known)
+        self.assertEqual(findings, [], "status words must not be misattributed across items")
+
+    def test_multiple_items_one_stale_is_still_detected(self):
+        """A genuine mismatch on a multi-item line must still be reported."""
+        known = {"WU-0011": "verified", "WU-0013": "active"}
+        line = "WU-0011 已 verified；WU-0013 处于 review 阶段。\n"
+        findings = StateClaimScanner.scan_work_item_status_claims(line, known)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["subject"], "WU-0013")
+        self.assertEqual(findings[0]["claimed"], "review")
+
+    def test_status_before_any_item_is_ignored(self):
+        """A status word appearing before the first item claims nothing."""
+        known = {"WU-0013": "active"}
+        findings = StateClaimScanner.scan_work_item_status_claims(
+            "状态为 verified：WU-0013 的实现。\n", known
+        )
+        self.assertEqual(findings, [])
+
     def test_numeric_revision_claim_detected(self):
         findings = StateClaimScanner.scan_numeric_claims(HANDOFF_STALE, revision_truth=104)
         claimed = {f["claimed"] for f in findings}

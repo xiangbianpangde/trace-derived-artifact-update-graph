@@ -129,16 +129,29 @@ class StateClaimScanner:
     """
 
     @staticmethod
+    def _status_word_positions(lowered_line: str) -> List[Tuple[str, int]]:
+        """Returns (status_word, char_offset) pairs for every status token on a line."""
+        positions: List[Tuple[str, int]] = []
+        for word in STATUS_WORDS:
+            for match in re.finditer(rf"(?<![A-Za-z_]){re.escape(word)}(?![A-Za-z_])", lowered_line):
+                positions.append((word, match.start()))
+        positions.sort(key=lambda p: p[1])
+        return positions
+
+    @staticmethod
     def scan_work_item_status_claims(
         text: str,
         known_statuses: Dict[str, str],
     ) -> List[Dict[str, Any]]:
         """
         Finds prose assertions of the form "WU-0013 (active)" or
-        "`WU-0013`（active）" and compares them with the authoritative status.
+        "`WU-0013` 处于 active" and compares them with the authoritative status.
 
-        Only fires when the document names a status word adjacent to the work
-        item, so a bare mention of `WU-0013` is not treated as a claim.
+        A single line often mentions several work items with different statuses
+        ("WU-0011 and WU-0012 are verified; WU-0013 is active"). Pairing every
+        item with the line's first status word would misattribute the claim, so
+        each status word is bound to the nearest preceding work item instead.
+        Items with no status word of their own are not treated as claims.
         """
         findings: List[Dict[str, Any]] = []
         lines = text.splitlines()
@@ -146,22 +159,29 @@ class StateClaimScanner:
         for line_no, line in enumerate(lines, start=1):
             if not WORK_ITEM_RE.search(line):
                 continue
-            for item_id in set(WORK_ITEM_RE.findall(line)):
+
+            lowered = line.lower()
+            item_matches = list(WORK_ITEM_RE.finditer(line))
+            status_positions = StateClaimScanner._status_word_positions(lowered)
+            if not status_positions:
+                continue
+
+            # Bind each status word to the closest work item preceding it on the
+            # line. A status before any item belongs to no one and is dropped.
+            claimed_by_item: Dict[str, str] = {}
+            for word, pos in status_positions:
+                candidates = [m for m in item_matches if m.start() < pos]
+                if not candidates:
+                    continue
+                nearest = max(candidates, key=lambda m: m.start())
+                item_id = nearest.group(1)
+                # The first status word after an item is its claim.
+                claimed_by_item.setdefault(item_id, word)
+
+            for item_id, claimed in claimed_by_item.items():
                 truth = known_statuses.get(item_id)
-                if not truth:
+                if not truth or claimed == truth:
                     continue
-
-                # Look for a status word near the work item on the same line.
-                lowered = line.lower()
-                claimed = None
-                for word in STATUS_WORDS:
-                    # Require the word to appear as a standalone token.
-                    if re.search(rf"(?<![A-Za-z_]){re.escape(word)}(?![A-Za-z_])", lowered):
-                        claimed = word
-                        break
-                if claimed is None or claimed == truth:
-                    continue
-
                 findings.append({
                     "kind": "work_item_status_mismatch",
                     "locator": f"line:{line_no}",

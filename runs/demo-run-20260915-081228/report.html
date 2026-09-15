@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>DAUG Demo 运行报告 - demo-run-20260915-081228</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #1f2937; margin: 0; padding: 24px; background: #f9fafb; }
+    .container { max-width: 1100px; margin: 0 auto; background: #ffffff; border-radius: 8px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+    .badge-proposed { background: #e0f2fe; color: #0369a1; }
+    .badge-stale { background: #fee2e2; color: #b91c1c; }
+    .badge-valid { background: #dcfce7; color: #15803d; }
+    .badge-na { background: #f3f4f6; color: #4b5563; }
+    .badge-warning { background: #fef3c7; color: #b45309; }
+    h1, h2, h3 { color: #111827; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { border: 1px solid #e5e7eb; padding: 10px 14px; text-align: left; font-size: 14px; }
+    th { background: #f9fafb; font-weight: 600; }
+    pre { background: #1f2937; color: #f9fafb; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
+    .card { background: #f3f4f6; border-left: 4px solid #3b82f6; padding: 16px; margin: 16px 0; border-radius: 0 4px 4px 0; }
+    .alert-banner { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 12px 16px; border-radius: 6px; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="alert-banner">
+      <strong>模式声明：</strong> 本系统运行于 <code>propose_only</code> 只读提案模式。状态：<code>Proposed</code>。所有补丁均为 <strong>NOT APPLIED</strong>，绝无生产写回。
+    </div>
+
+    <h1>轨迹驱动的动态制品更新图 (DAUG) 运行报告</h1>
+    <p><strong>运行标识 (Run ID):</strong> <code>demo-run-20260915-081228</code> | <strong>执行时间:</strong> 2026-09-15T08:12:28Z | <strong>图版本:</strong> graph-v0.1-demo</p>
+
+    <h2>1. 核心回答 (Core Answers)</h2>
+    <div class="card">
+      <p><strong>Q1: 本次变更是什么？</strong><br>
+      接口变化场景：UserContext 类的公共属性 user_id 更名为 subject_id</p>
+      <p><strong>Q2: 哪些制品被召回？</strong><br>
+      召回了 4 个候选制品，包含静态关联代码、单元测试及多份设计与契约文档。</p>
+      <p><strong>Q3: 哪些具体陈述被判定为陈旧？</strong><br>
+      经过独立 Staleness Verifier 审查，定位到 4 处陈述失效（如对旧字段 <code>user_id</code> 的描述），负对照与不相关文档被正确判定为 VALID / NOT_APPLICABLE。</p>
+      <p><strong>Q4: 哪些补丁被提出？</strong><br>
+      生成了 4 份最小补丁提案，绑定目标预期哈希与回滚材料，状态为 <code>PATCH_PROPOSED</code> (未写入磁盘)。</p>
+      <p><strong>Q5: 治理与自强化控制表现？</strong><br>
+      系统推荐访问仅赋予 0.05 低权重，大任务格式化触发超边收敛，阻止反馈回路与无差别边爆炸。</p>
+    </div>
+
+    <h2>2. 候选制品与特征证据 (Candidate Ranking)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>排名</th>
+          <th>制品 URI</th>
+          <th>综合得分</th>
+          <th>主要证据类型</th>
+          <th>自发支持 / 推荐支持</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+            <tr>
+              <td>1</td>
+              <td><code>docs/auth_design.md</code></td>
+              <td><strong>0.9964</strong></td>
+              <td><code>multi_signal_fusion</code></td>
+              <td>sha256:e0600...</td>
+            </tr>
+            
+            <tr>
+              <td>2</td>
+              <td><code>tests/auth_filter.test.ts</code></td>
+              <td><strong>0.9777</strong></td>
+              <td><code>multi_signal_fusion</code></td>
+              <td>sha256:9be35...</td>
+            </tr>
+            
+            <tr>
+              <td>3</td>
+              <td><code>src/auth/auth_filter.ts</code></td>
+              <td><strong>0.8895</strong></td>
+              <td><code>multi_signal_fusion</code></td>
+              <td>sha256:a9288...</td>
+            </tr>
+            
+            <tr>
+              <td>4</td>
+              <td><code>docs/api_contract.md</code></td>
+              <td><strong>0.6661</strong></td>
+              <td><code>reference</code></td>
+              <td>sha256:873a5...</td>
+            </tr>
+            
+      </tbody>
+    </table>
+
+    <h2>3. 陈旧验证结论 (Staleness Verification)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>候选制品</th>
+          <th>验证状态</th>
+          <th>置信度</th>
+          <th>失效陈述定位 (Spans)</th>
+          <th>证据摘要</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+            <tr>
+              <td><code>cand-candset-change-interface-001-graph-v0.1-demo-1</code></td>
+              <td><span class="badge badge-stale">STALE</span></td>
+              <td>0.95</td>
+              <td>section:## Data Structure > item (line:8) (OBSOLETE_FIELD_REFERENCE), section:## Data Structure > line:12 (OBSOLETE_FIELD_REFERENCE)</td>
+              <td><code>...</code></td>
+            </tr>
+            
+            <tr>
+              <td><code>cand-candset-change-interface-001-graph-v0.1-demo-2</code></td>
+              <td><span class="badge badge-stale">STALE</span></td>
+              <td>0.95</td>
+              <td>symbol:function runTests > line:6 (OBSOLETE_FIELD_REFERENCE), symbol:function runTests > line:7 (OBSOLETE_FIELD_REFERENCE)</td>
+              <td><code>...</code></td>
+            </tr>
+            
+            <tr>
+              <td><code>cand-candset-change-interface-001-graph-v0.1-demo-3</code></td>
+              <td><span class="badge badge-stale">STALE</span></td>
+              <td>0.95</td>
+              <td>symbol:function filterUserContext > line:4 (OBSOLETE_FIELD_REFERENCE)</td>
+              <td><code>...</code></td>
+            </tr>
+            
+            <tr>
+              <td><code>cand-candset-change-interface-001-graph-v0.1-demo-4</code></td>
+              <td><span class="badge badge-stale">STALE</span></td>
+              <td>0.95</td>
+              <td>section:## Identity Attributes > item (line:5) (OBSOLETE_FIELD_REFERENCE)</td>
+              <td><code>...</code></td>
+            </tr>
+            
+      </tbody>
+    </table>
+
+    <h2>4. 最小补丁提案预览 (Patch Proposals - Not Applied)</h2>
+    
+            <div style="margin-bottom: 24px;">
+              <h3>补丁编号: <code>patch-0cadbf8839a903ef</code> (目标: <code>docs/auth_design.md</code>)</h3>
+              <p>
+                <strong>预期哈希:</strong> <code>sha256:3de6caa42d3937156e746d75cf5232c9a735ac8ecdd996bb760d96ecc9750f86</code> |
+                <strong>最小性检查:</strong> <span class="badge badge-valid">pass</span> |
+                <strong>策略决策:</strong> <span class="badge badge-proposed">PROPOSE_ONLY</span>
+              </p>
+              <pre>--- a/docs/auth_design.md
++++ b/docs/auth_design.md
+@@ -5,8 +5,8 @@
+ 
+
+ ## Data Structure
+
+ The `UserContext` interface exposes the following primary fields:
+
+-- `user_id`: The unique system-wide identifier of the authenticated user.
+
++- `subject_id`: The unique system-wide identifier of the authenticated user.
+
+ - `tenant_id`: The organisation / tenant identifier.
+
+ - `roles`: List of RBAC roles assigned to this identity.
+
+ 
+
+-When downstream services validate authorization, they must extract `user_id` to look up permissions.
+
++When downstream services validate authorization, they must extract `subject_id` to look up permissions.
+</pre>
+            </div>
+            
+            <div style="margin-bottom: 24px;">
+              <h3>补丁编号: <code>patch-ef8b1647689b3d06</code> (目标: <code>tests/auth_filter.test.ts</code>)</h3>
+              <p>
+                <strong>预期哈希:</strong> <code>sha256:7a695ce328e59d2e9fadb9a9af3a947152f2d271e36bda4ea06e015582ee214e</code> |
+                <strong>最小性检查:</strong> <span class="badge badge-valid">pass</span> |
+                <strong>策略决策:</strong> <span class="badge badge-proposed">PROPOSE_ONLY</span>
+              </p>
+              <pre>--- a/tests/auth_filter.test.ts
++++ b/tests/auth_filter.test.ts
+@@ -3,8 +3,8 @@
+ 
+
+ export function runTests(): boolean {
+
+   const ctx = createUserContext('usr_123', 'ten_456', ['admin']);
+
+-  if (ctx.user_id !== 'usr_123') {
+
+-    throw new Error('user_id mismatch');
+
++  if (ctx.subject_id !== 'usr_123') {
+
++    throw new Error('subject_id mismatch');
+
+   }
+
+   return filterUserContext(ctx);
+
+ }
+</pre>
+            </div>
+            
+            <div style="margin-bottom: 24px;">
+              <h3>补丁编号: <code>patch-4a0419708e40d912</code> (目标: <code>src/auth/auth_filter.ts</code>)</h3>
+              <p>
+                <strong>预期哈希:</strong> <code>sha256:3daf5e2daf608a7899fff2b25081f8f1c9691fe3ca539b3a5b3d9a0a35d06ddf</code> |
+                <strong>最小性检查:</strong> <span class="badge badge-valid">pass</span> |
+                <strong>策略决策:</strong> <span class="badge badge-proposed">PROPOSE_ONLY</span>
+              </p>
+              <pre>--- a/src/auth/auth_filter.ts
++++ b/src/auth/auth_filter.ts
+@@ -1,6 +1,6 @@
+ import { UserContext } from './user_context';
+
+ 
+
+ export function filterUserContext(ctx: UserContext): boolean {
+
+-  const localFilterId = ctx.user_id;
+
++  const localFilterId = ctx.subject_id;
+
+   return localFilterId.length > 0 && ctx.roles.includes('admin');
+
+ }
+</pre>
+            </div>
+            
+            <div style="margin-bottom: 24px;">
+              <h3>补丁编号: <code>patch-20a286d45158b95e</code> (目标: <code>docs/api_contract.md</code>)</h3>
+              <p>
+                <strong>预期哈希:</strong> <code>sha256:ef5af50f6dd424f558739d4780a5db64388ef22cd14543c87a347cf1b3e039c8</code> |
+                <strong>最小性检查:</strong> <span class="badge badge-valid">pass</span> |
+                <strong>策略决策:</strong> <span class="badge badge-proposed">PROPOSE_ONLY</span>
+              </p>
+              <pre>--- a/docs/api_contract.md
++++ b/docs/api_contract.md
+@@ -2,5 +2,5 @@
+ 
+
+ ## Identity Attributes
+
+ Requests must contain identity attributes mapped to `UserContext`:
+
+-- Public field: `user_id` (string)
+
++- Public field: `subject_id` (string)
+
+ - Public field: `tenant_id` (string)
+</pre>
+            </div>
+            
+
+    <h2>5. 演示验收状态 (Status Words)</h2>
+    <table>
+      <thead>
+        <tr><th>验收项</th><th>状态</th><th>依据</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Event Ingestion</td><td><span class="badge badge-valid">Tested</span></td><td>Schema 严格校验，幂等通过</td></tr>
+        <tr><td>Offline Replay</td><td><span class="badge badge-valid">Tested</span></td><td>SQLite WAL 确定性重放一致</td></tr>
+        <tr><td>Candidate Ranking</td><td><span class="badge badge-valid">Tested</span></td><td>多源融合 (Static + Trace + Reference)</td></tr>
+        <tr><td>Staleness Verification</td><td><span class="badge badge-valid">Tested</span></td><td>独立审查，四值判定严格落地</td></tr>
+        <tr><td>Patch Proposal</td><td><span class="badge badge-valid">Tested</span></td><td>生成 unified diff，绑定 Expected Hash</td></tr>
+        <tr><td>Negative Control (Scenario B)</td><td><span class="badge badge-valid">Tested</span></td><td>局部重构不触发陈旧补丁</td></tr>
+        <tr><td>Self-Reinforcement Control (Scenario D)</td><td><span class="badge badge-valid">Tested</span></td><td>推荐访问权重衰减至 0.05</td></tr>
+        <tr><td>Patch Application</td><td><span class="badge badge-na">Propose Only</span></td><td>严格只读，不修改真实工作区</td></tr>
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

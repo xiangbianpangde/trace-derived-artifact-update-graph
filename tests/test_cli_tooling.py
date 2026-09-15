@@ -160,6 +160,7 @@ class TestCLITooling(unittest.TestCase):
             repo = str(self.repo_copy)
             type = "pre-commit"
             strict = True
+            db = None
 
         ret = cmd_hook_install(InstallArgs())
         self.assertEqual(ret, 0)
@@ -170,7 +171,9 @@ class TestCLITooling(unittest.TestCase):
 
         content = hook_file.read_text(encoding="utf-8")
         self.assertIn("DAUG HOOK BEGIN", content)
-        self.assertIn("daug check --staged --fail-on-stale", content)
+        self.assertIn("daug\" check --staged", content.replace("$DAUG_ENTRY", "daug"))
+        # Strict mode must block on stale (exit 1) and fail-closed on infra errors.
+        self.assertIn("1) exit 1", content)
 
         # Test uninstall
         class UninstallArgs:
@@ -181,3 +184,63 @@ class TestCLITooling(unittest.TestCase):
         self.assertEqual(ret_un, 0)
         if hook_file.exists():
             self.assertNotIn("DAUG HOOK BEGIN", hook_file.read_text(encoding="utf-8"))
+
+    def test_hook_warn_only_never_blocks(self):
+        """Warn-only hooks must exit 0 on staleness AND on infrastructure failure."""
+        from daug.cli import build_hook_script_body
+
+        script = build_hook_script_body("pre-commit", strict=False, db_path=None, repo_root=self.repo_copy)
+        # Stale (exit 1) must be converted to a non-blocking exit.
+        self.assertIn("1) exit 1", script)
+        self.assertIn("*) exit 0", script)
+        # Warn-only must never propagate a block from strict mode.
+        self.assertNotIn("--fail-on-stale", script)
+
+    def test_hook_strict_blocks_on_stale_only(self):
+        """Strict hooks block on staleness, not on unrelated exit codes."""
+        from daug.cli import build_hook_script_body
+
+        script = build_hook_script_body("pre-commit", strict=True, db_path="/tmp/x.sqlite", repo_root=self.repo_copy)
+        self.assertIn("--fail-on-stale", script)
+        self.assertIn("1) exit 1", script)
+        # Infrastructure failure (exit 3) must block in strict mode.
+        self.assertIn("blocking because strict mode is enabled", script)
+
+    def test_hook_uses_absolute_entrypoint_and_db(self):
+        """Hooks must not rely on PATH lookup or relative ./bin/daug probes."""
+        from daug.cli import build_hook_script_body, resolve_daug_entrypoint
+
+        script = build_hook_script_body("pre-commit", strict=False, db_path="/tmp/led.sqlite", repo_root=self.repo_copy)
+        entry = resolve_daug_entrypoint()
+        self.assertTrue(entry.startswith("/"), "entrypoint must be absolute")
+        self.assertIn(entry, script)
+        self.assertIn('DAUG_DB="/tmp/led.sqlite"', script)
+        # The legacy PATH- and CWD-dependent probes must be gone.
+        self.assertNotIn("command -v daug", script)
+        self.assertNotIn("./bin/daug", script)
+
+    def test_check_exit_codes_distinguish_stale_from_infra(self):
+        """`daug check` must separate 'could not run' from 'found staleness'."""
+        from daug.cli import EXIT_INFRA, EXIT_OK, EXIT_STALE
+
+        self.assertEqual(EXIT_OK, 0)
+        self.assertEqual(EXIT_STALE, 1)
+        self.assertEqual(EXIT_INFRA, 3)
+
+        class Args:
+            files = ["src/auth/user_context.ts"]
+            files_opt = None
+            staged = False
+            uncommitted = False
+            db = os.path.join(self.temp_dir, "does-not-exist.sqlite")
+            repo_root = str(self.repo_copy)
+            json = True
+            fail_on_stale = True
+            propose = False
+
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cmd_check(Args())
+        self.assertEqual(rc, EXIT_INFRA, "missing ledger must be an infrastructure error, not staleness")

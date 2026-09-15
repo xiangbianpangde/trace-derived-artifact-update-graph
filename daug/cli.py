@@ -7,6 +7,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from daug.ledger import Ledger, compute_sha256
 from daug.normalizer import Normalizer
@@ -18,6 +19,14 @@ from daug.policy import PolicyEngine
 from daug.reporter import RunReporter
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Exit codes for `daug check` (and any hook consuming it).
+# The distinction matters: a hook must be able to tell "the repo is clean/stale"
+# apart from "DAUG could not run at all". Conflating them caused warn-only hooks
+# to silently block every commit when the ledger was missing.
+EXIT_OK = 0            # clean, or stale found but not in --fail-on-stale mode
+EXIT_STALE = 1         # stale found and --fail-on-stale requested the block
+EXIT_INFRA = 3         # DAUG could not run (no ledger, no graph snapshot, bad args)
 
 def get_ledger(db_path: str = "demo.sqlite") -> Ledger:
     ledger = Ledger(db_path)
@@ -416,10 +425,10 @@ def cmd_check(args):
     if not db_path or not db_path.exists():
         err_msg = "[check] Error: No DAUG ledger database found. Specify --db or run 'daug init' first."
         if getattr(args, "json", False):
-            print(json.dumps({"error": err_msg}))
+            print(json.dumps({"error": err_msg, "exit_code": EXIT_INFRA}))
         else:
             print(err_msg, file=sys.stderr)
-        return 1
+        return EXIT_INFRA
 
     ledger = get_ledger(str(db_path))
     cursor = ledger.conn.cursor()
@@ -430,10 +439,10 @@ def cmd_check(args):
     if not latest_graph:
         err_msg = f"[check] Error: No published graph snapshot found in '{db_path}'. Run 'daug graph build' first."
         if getattr(args, "json", False):
-            print(json.dumps({"error": err_msg}))
+            print(json.dumps({"error": err_msg, "exit_code": EXIT_INFRA}))
         else:
             print(err_msg, file=sys.stderr)
-        return 1
+        return EXIT_INFRA
 
     graph_version = latest_graph["graph_version"]
 
@@ -590,46 +599,178 @@ def cmd_check(args):
         print("-" * 65)
 
     if total_stale > 0 and getattr(args, "fail_on_stale", False):
-        return 1
-    return 0
+        return EXIT_STALE
+    return EXIT_OK
 
 HOOK_MARKER_BEGIN = "# --- DAUG HOOK BEGIN ---"
 HOOK_MARKER_END = "# --- DAUG HOOK END ---"
+
+def resolve_git_dir(repo_root: Path) -> Optional[Path]:
+    """Resolve the real git directory (handles worktrees and .git files)."""
+    try:
+        res = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-dir"],
+            capture_output=True, text=True, check=True, cwd=str(repo_root)
+        )
+        out = res.stdout.strip()
+        if out:
+            return Path(out)
+    except Exception:
+        pass
+    git_dir = repo_root / ".git"
+    return git_dir if git_dir.exists() else None
+
+def resolve_hooks_dir(repo_root: Path) -> Path:
+    """
+    Resolve the directory git will actually read hooks from.
+
+    `git rev-parse --git-path hooks` honours core.hooksPath, which may be set
+    globally and therefore point outside the repository. Writing to
+    `.git/hooks` when core.hooksPath is configured produces a hook that git
+    never executes - a silent no-op that looks like a successful install.
+    """
+    try:
+        res = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-path", "hooks"],
+            capture_output=True, text=True, check=True, cwd=str(repo_root)
+        )
+        out = res.stdout.strip()
+        if out:
+            return Path(out)
+    except Exception:
+        pass
+    git_dir = resolve_git_dir(repo_root)
+    if git_dir is None:
+        raise FileNotFoundError("not a git repository")
+    return git_dir / "hooks"
+
+def get_effective_hooks_path_config(repo_root: Path) -> Optional[str]:
+    """Return the configured core.hooksPath value, if any (repo overrides global)."""
+    try:
+        res = subprocess.run(
+            ["git", "config", "--get", "core.hooksPath"],
+            capture_output=True, text=True, cwd=str(repo_root)
+        )
+        value = res.stdout.strip()
+        return value or None
+    except Exception:
+        return None
+
+def resolve_daug_entrypoint() -> str:
+    """
+    Absolute path to a DAUG CLI shim that hooks can invoke reliably.
+
+    Hooks run with an unpredictable CWD and a non-interactive PATH, so a bare
+    `daug` lookup and relative `./bin/daug` probes are both unreliable.
+    """
+    return str((BASE_DIR / "bin" / "daug").resolve())
+
+def build_hook_script_body(hook_type: str, strict: bool, db_path: Optional[str], repo_root: Path) -> str:
+    daug_entry = resolve_daug_entrypoint()
+    db_line = f'DAUG_DB="{db_path}"' if db_path else 'DAUG_DB=""'
+    strict_flag = "--fail-on-stale " if strict else ""
+
+    # Exit-code contract:
+    #   0 = clean, or stale in warn-only mode            -> allow commit
+    #   1 = stale and strict mode                        -> block commit
+    #   3 = DAUG could not run (missing ledger/graph)    -> allow unless strict
+    # Any other code (crash, signal) is treated as infrastructure failure.
+    if strict:
+        tail = (
+            'case "$rc" in\n'
+            '    0) exit 0 ;;\n'
+            '    1) exit 1 ;;\n'
+            '    *) echo "[DAUG] check failed to run (exit $rc); blocking because strict mode is enabled." >&2; exit 1 ;;\n'
+            'esac\n'
+        )
+    else:
+        tail = (
+            'case "$rc" in\n'
+            '    1) exit 1 ;;\n'
+            '    *) exit 0 ;;\n'
+            'esac\n'
+        )
+
+    return f"""{HOOK_MARKER_BEGIN}
+# Trace-Derived Artifact Update Graph (DAUG) {hook_type} hook
+# Mode: {"strict (blocks commit when stale)" if strict else "warn-only (never blocks on staleness)"}
+DAUG_ENTRY="{daug_entry}"
+{db_line}
+DAUG_REPO="{repo_root}"
+
+if [ ! -x "$DAUG_ENTRY" ]; then
+    echo "[DAUG] CLI not found at $DAUG_ENTRY - skipping staleness check." >&2
+    exit 0
+fi
+
+if [ -n "$DAUG_DB" ]; then
+    "$DAUG_ENTRY" check --staged --repo-root "$DAUG_REPO" --db "$DAUG_DB" {strict_flag}>/dev/null
+else
+    "$DAUG_ENTRY" check --staged --repo-root "$DAUG_REPO" {strict_flag}>/dev/null
+fi
+rc=$?
+
+{tail}{HOOK_MARKER_END}
+"""
 
 def cmd_hook_install(args):
     repo_root = getattr(args, "repo", None)
     if not repo_root:
         try:
             res = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True)
-            repo_root = Path(res.stdout.strip())
+            repo_root = Path(res.stdout.strip()).resolve()
         except Exception:
             repo_root = Path.cwd()
     else:
         repo_root = Path(repo_root).resolve()
 
-    git_dir = repo_root / ".git"
-    if not git_dir.exists():
-        print(f"[hook-install] Error: '{repo_root}' is not a git repository (.git directory not found).", file=sys.stderr)
+    try:
+        hooks_dir = resolve_hooks_dir(repo_root)
+    except FileNotFoundError:
+        print(f"[hook-install] Error: '{repo_root}' is not a git repository.", file=sys.stderr)
         return 1
 
     hook_type = getattr(args, "type", "pre-commit")
-    hooks_dir = git_dir / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hook_file = hooks_dir / hook_type
 
-    fail_flag = "--fail-on-stale" if getattr(args, "strict", False) else ""
-    hook_script_body = f"""{HOOK_MARKER_BEGIN}
-# Trace-Derived Artifact Update Graph (DAUG) {hook_type} hook
-# Warns or blocks when code changes leave documentation or contracts stale.
-if command -v daug >/dev/null 2>&1; then
-    daug check --staged {fail_flag}
-elif [ -f "./bin/daug" ]; then
-    ./bin/daug check --staged {fail_flag}
-elif [ -f "../bin/daug" ]; then
-    ../bin/daug check --staged {fail_flag}
-fi
-{HOOK_MARKER_END}
-"""
+    # Safety gate: only a hooks directory INSIDE this repository is repo-local.
+    # When core.hooksPath points outside (e.g. a global ~/.git-hooks), the install
+    # would govern every repository on the machine, so require explicit opt-in.
+    hooks_dir_is_shared = True
+    try:
+        hooks_dir.resolve().relative_to(repo_root.resolve())
+        hooks_dir_is_shared = False
+    except Exception:
+        hooks_dir_is_shared = True
+
+    if hooks_dir_is_shared and not getattr(args, "allow_shared_hooks", False):
+        configured_hooks_path = get_effective_hooks_path_config(repo_root)
+        print(
+            f"[hook-install] Refusing to install: git resolves hooks to '{hooks_dir}', "
+            f"which is outside this repository (core.hooksPath = '{configured_hooks_path}').",
+            file=sys.stderr,
+        )
+        print(
+            f"[hook-install] Installing there would affect every repository using that "
+            f"path, not just '{repo_root}'.",
+            file=sys.stderr,
+        )
+        print(
+            "[hook-install] Preferred fix - give this repository its own hook directory:",
+            file=sys.stderr,
+        )
+        print(f"[hook-install]   git -C '{repo_root}' config core.hooksPath .githooks", file=sys.stderr)
+        print(
+            "[hook-install] Then re-run the install. To target the shared directory anyway, "
+            "pass --allow-shared-hooks.",
+            file=sys.stderr,
+        )
+        return 1
+
+    strict = bool(getattr(args, "strict", False))
+    db_path = getattr(args, "db", None)
+    hook_script_body = build_hook_script_body(hook_type, strict, db_path, repo_root)
 
     existing_content = ""
     if hook_file.exists():
@@ -646,8 +787,22 @@ fi
     current_mode = hook_file.stat().st_mode
     hook_file.chmod(current_mode | 0o755)
 
-    mode_desc = "strict (blocks commit if stale)" if getattr(args, "strict", False) else "warn-only (prints warning without blocking)"
+    mode_desc = "strict (blocks commit if stale)" if strict else "warn-only (prints warning without blocking)"
     print(f"[hook-install] Installed DAUG '{hook_type}' hook in '{hook_file}' ({mode_desc}).")
+
+    if hooks_dir_is_shared:
+        print(
+            f"[hook-install] Warning: this hook lives in a shared directory "
+            f"('{hooks_dir}') and therefore applies to every repository using the same "
+            f"core.hooksPath.",
+            file=sys.stderr,
+        )
+
+    # Report the exit-code contract so operators know if commits can be blocked.
+    if strict:
+        print("[hook-install] Strict mode: exits 1 (blocks commit) when stale documents are found.")
+    else:
+        print("[hook-install] Warn-only mode: prints findings but never blocks the commit.")
     return 0
 
 def cmd_hook_uninstall(args):
@@ -655,14 +810,21 @@ def cmd_hook_uninstall(args):
     if not repo_root:
         try:
             res = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True)
-            repo_root = Path(res.stdout.strip())
+            repo_root = Path(res.stdout.strip()).resolve()
         except Exception:
             repo_root = Path.cwd()
     else:
         repo_root = Path(repo_root).resolve()
 
     hook_type = getattr(args, "type", "pre-commit")
-    hook_file = repo_root / ".git" / "hooks" / hook_type
+
+    try:
+        hooks_dir = resolve_hooks_dir(repo_root)
+    except FileNotFoundError:
+        print(f"[hook-uninstall] Error: '{repo_root}' is not a git repository.", file=sys.stderr)
+        return 1
+
+    hook_file = hooks_dir / hook_type
     if not hook_file.exists():
         print(f"[hook-uninstall] No hook found at '{hook_file}'.")
         return 0
@@ -908,6 +1070,13 @@ def main():
     p_hi.add_argument("--repo", default=None, help="Repository path (defaults to current git repo)")
     p_hi.add_argument("--type", default="pre-commit", choices=["pre-commit", "pre-push"], help="Hook type")
     p_hi.add_argument("--strict", action="store_true", help="Block commits if stale docs found (default: warn only)")
+    p_hi.add_argument("--db", default=None, help="Pin the ledger path inside the hook (defaults to repo/cwd auto-discovery)")
+    p_hi.add_argument(
+        "--allow-shared-hooks",
+        action="store_true",
+        dest="allow_shared_hooks",
+        help="Permit installing into a shared core.hooksPath directory that affects other repositories",
+    )
 
     p_hu = p_hook_sub.add_parser("uninstall", help="Uninstall git hook")
     p_hu.add_argument("--repo", default=None, help="Repository path (defaults to current git repo)")

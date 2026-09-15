@@ -189,6 +189,21 @@ In the real GAP trace, unit tests executed over 600 times, saturating linear edg
 ### RQ5: Does DAUG maintain real-time performance?
 The total end-to-end retrieval and verification latency across all scenarios averages **79.4 milliseconds**, well within the interactive budget of real-time developer workflows (e.g., Git pre-commit hooks and IDE sidebars).
 
+### RQ6: Beyond renamed symbols - does DAUG detect state drift?
+
+Symbol-drift verification fires only when an identifier changes. A second drift class was observed in a live repository: no identifier changes, yet prose becomes false because an authoritative ledger advanced.
+
+DAUG models this as **state-claim verification**: a status ledger is designated as source of truth, and claims elsewhere are checked against its current state. Run against a real 135-artifact repository, the detector immediately surfaced two long-standing stale assertions that symbol matching could never see:
+
+| Location | Claim in document | Truth | Drift |
+| --- | --- | --- | --- |
+| `HANDOFF.md:5` | plan revision **74** | revision **104** | 30 |
+| `HANDOFF.md:62` | `Plan revision: **60**` | revision **104** | 44 |
+
+After remediation the detector reported **0 stale claims**, confirming convergence and the absence of residual false positives.
+
+A false positive observed on the first live run is reported rather than hidden: a line naming several work items with different statuses caused status words to be attributed to the wrong item. The cause was pairing each item with the line's first status word instead of the nearest preceding one. This illustrates a general requirement for claim-level verification: when one sentence carries several claims, anchoring semantics must be defined explicitly rather than inferred from proximity to an arbitrary token.
+
 ---
 
 ## 8. Threats to Validity

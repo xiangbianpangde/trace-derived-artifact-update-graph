@@ -33,7 +33,13 @@ Optimize DAUG's multi-modal candidate retrieval ranking and cross-modal artifact
 
 ## What's Been Tried
 ### Baseline (Run 0)
-- Current implementation: unweighted probabilistic complement fusion `1 - prod(1 - s_i)`.
-- Baseline primary metric: `mrr = 0.4815`.
-- Secondary metrics: `recall_at_5 = 0.4444`, `precision_at_3 = 0.2222`, `verifier_f1 = 1.0000`, `latency_ms = 22.6`.
-- Bottleneck: Scenario 3 (`src/checkpoint.ts`) gets crowded out by test files in top 5; target documentation (`plan/STATUS.md`, `worklog/...`) sits at rank 9-10.
+- Unweighted probabilistic complement fusion `1 - prod(1 - s_i)`.
+- Baseline metrics: `mrr = 0.4815`, `recall_at_5 = 0.4444`, `precision_at_3 = 0.2222`, `verifier_f1 = 1.0000`.
+- Bottleneck: repetitive test loops overwhelmed true targets; document contracts tied on score 1.0 and were sorted arbitrarily by SQLite rowid.
+
+### Run 1 (Keep)
+- Commit: `4a89db5`
+- Hypothesis: Scale `reference` relations by 1.25x for interface changes (explicit contract reference implies higher review priority) while scaling `static` imports to 0.85x; apply `log1p(organic_support)` sub-linear dampening and composite rank-key `(fused_score, damped_support)` for tie-breaking.
+- Outcome: `mrr = 0.6667` (+38.5%), `recall_at_5 = 0.7000` (+57.5%), `precision_at_3 = 0.6667` (+200%), `verifier_f1 = 1.0000`, latency 84.9ms.
+- Insight: Non-code specifications (`plan/STATUS.md`, `worklog/...`) successfully entered top ranks without degrading negative control safety.
+

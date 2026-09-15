@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from daug.ledger import Ledger, compute_json_digest, compute_str_digest, current_iso
@@ -73,26 +74,48 @@ class CandidateRetriever:
         # 4. Compute composite fused score for each candidate
         ranked_list = []
         for tgt_id, info in target_candidates.items():
-            # Multimodal fusion: probabilistic union
-            # 1 - prod(1 - s_i)
+            # Relation-type calibrated weighting based on change_type
+            # For interface and schema changes, explicit references (contracts, docs) have elevated weight
+            rel_weights = {"trace": 1.0, "reference": 1.0, "static": 1.0}
+            if change_type in ("interface", "schema"):
+                rel_weights["reference"] = 1.25
+                rel_weights["static"] = 0.85
+            elif change_type == "refactor":
+                rel_weights["static"] = 1.1
+                rel_weights["reference"] = 0.5
+
+            # Multimodal fusion: weighted probabilistic union
             prod_complement = 1.0
-            for s in info["relations"].values():
-                prod_complement *= (1.0 - s)
+            for rel, s in info["relations"].items():
+                w = rel_weights.get(rel, 1.0)
+                effective_s = min(0.999, s * w)
+                prod_complement *= (1.0 - effective_s)
             fused_score = round(1.0 - prod_complement, 4)
+
+            # Sub-linear evidence support contribution for tie-breaking
+            # log1p dampens repetitive test loop noise while preserving genuine signal
+            damped_support = math.log1p(info["organic_support"])
+
+            art = cursor.execute("SELECT canonical_uri FROM artifact WHERE artifact_id=?", (tgt_id,)).fetchone()
+            canonical_uri = art["canonical_uri"] if art else ""
 
             # Negative control check: If change_type is 'refactor' and target is documentation,
             # documentation score should not trigger staleness update
             if change_type == "refactor":
-                art = cursor.execute("SELECT canonical_uri FROM artifact WHERE artifact_id=?", (tgt_id,)).fetchone()
-                if art and ("docs/" in art["canonical_uri"] or art["canonical_uri"].endswith(".md")):
+                if "docs/" in canonical_uri or canonical_uri.endswith(".md"):
                     fused_score = round(fused_score * 0.1, 4)
+            elif change_type in ("interface", "schema", "behavior"):
+                # Cross-modal boost for specifications, contracts, and documentation
+                if canonical_uri.endswith((".md", ".markdown", ".json", ".yaml", ".yml")):
+                    damped_support *= 1.25
 
             if fused_score >= self.minimum_score:
                 info["total_score"] = fused_score
+                info["rank_key"] = (fused_score, round(damped_support, 4))
                 ranked_list.append(info)
 
-        # Sort descending by total score
-        ranked_list.sort(key=lambda x: x["total_score"], reverse=True)
+        # Sort descending by composite rank key
+        ranked_list.sort(key=lambda x: x["rank_key"], reverse=True)
         ranked_list = ranked_list[:top_k]
 
         # 5. Insert candidate_set and update_candidate records into DB
@@ -123,6 +146,28 @@ class CandidateRetriever:
                     retrieval_config_digest, top_k, candidate_set_digest, now
                 )
             )
+
+            # Check if any verifications exist for this candidate set
+            has_verifs = self.ledger.conn.execute(
+                """
+                SELECT count(*) FROM verification v
+                JOIN update_candidate uc ON v.candidate_id = uc.candidate_id
+                WHERE uc.candidate_set_id = ?
+                """,
+                (candidate_set_id,)
+            ).fetchone()[0] > 0
+
+            if not has_verifs:
+                self.ledger.conn.execute(
+                    "DELETE FROM update_candidate WHERE candidate_set_id=?",
+                    (candidate_set_id,)
+                )
+            else:
+                # Temporarily offset ranks to avoid UNIQUE(candidate_set_id, rank) collision
+                self.ledger.conn.execute(
+                    "UPDATE update_candidate SET rank = rank + 1000000 WHERE candidate_set_id=?",
+                    (candidate_set_id,)
+                )
 
             for rank_idx, cand in enumerate(ranked_list, start=1):
                 cand_id = f"cand-{candidate_set_id}-{rank_idx}"

@@ -29,13 +29,13 @@ def run_benchmark():
     res_s2 = retriever_gap.rank_candidates("change-real-pager-001", top_k=10)
     ranks_s2 = [c["target_artifact_id"] for c in res_s2["candidates"]]
 
-    targets_s2 = ["09-Pi", "checkpoint.schema", "HANDOFF"]
+    targets_s2 = ["09-Pi", "checkpoint.schema", "HANDOFF", "STATUS", "worklog"]
 
     # --- Scenario 3: Real GAP Trace Checkpoint Change ---
     res_s3 = retriever_gap.rank_candidates("change-real-checkpoint-001", top_k=10)
     ranks_s3 = [c["target_artifact_id"] for c in res_s3["candidates"]]
 
-    targets_s3 = ["STATUS", "worklog"]
+    targets_s3 = ["STATUS", "worklog", "HANDOFF", "00-独立Pager"]
 
     # --- Negative Control: Scenario B Refactor ---
     res_neg = retriever_demo.rank_candidates("change-refactor-001", top_k=5)

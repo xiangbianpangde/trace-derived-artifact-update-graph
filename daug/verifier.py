@@ -47,7 +47,8 @@ class StalenessVerifier:
             raise ValueError(f"Candidate {candidate_id} not found")
 
         repo_root = self.repo_root_override or Path(row["canonical_root"])
-        target_file_path = repo_root / row["canonical_uri"]
+        canonical_uri = row["canonical_uri"]
+        target_file_path = repo_root / canonical_uri
 
         if not target_file_path.exists():
             return self._record_verification(
@@ -68,7 +69,6 @@ class StalenessVerifier:
         target_text = target_bytes.decode("utf-8", errors="replace")
 
         change_type = row["change_type"]
-        canonical_uri = row["canonical_uri"]
 
         # 2. Logic for Staleness Verification
         # Scenario B (Negative Control): local refactor

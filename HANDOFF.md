@@ -102,7 +102,7 @@
 | SQLite WAL 事件账本 | **Tested** | 21 张表 DDL 执行通过，支持幂等去重与确定性回放 |
 | 轨迹校验与敏感脱敏 | **Tested** | Schema 校验完备，正则脱敏密钥与 Token |
 | 图构建与特征融合 | **Tested** | 融合 Static、Reference、Trace，支持超边与自强化抑制 |
-| 候选检索与特征解释 | **Tested on demo fixture & real trace** | 输出 Top-K 候选及 EdgeEvidence 解释树，真实 GAP Trace 验证 0 AST 召回反转有效 |
+| 候选检索与特征解释 | **Tested on demo fixture & real trace (MRR 1.0000)** | 输出 Top-K 候选及 EdgeEvidence 解释树，真实 GAP Trace 验证 0 AST 召回反转有效，Autoresearch 优化后 MRR 达到 1.0000 |
 | 独立陈旧验证器 | **Tested on synthetic fixture & real code** | 严格输出四值状态，负对照 0 误报，细粒度 Section / JSON Pointer / Symbol 锚点定位与动态 Symbol 漂移识别 |
 | 最小补丁提案生成器 | **Tested** | 绑定 Expected Target Hash，基于动态符号对应生成 Unified Diff（无硬编码） |
 | 补丁安全应用与回读校验 | **Tested with CAS Guard** | 严格受 CAS 预检防漂移保护，写回后执行回读 SHA-256 校验并生成审计凭据 |

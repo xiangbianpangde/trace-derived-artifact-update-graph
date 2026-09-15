@@ -107,7 +107,8 @@ class CandidateRetriever:
             elif change_type in ("interface", "schema", "behavior"):
                 # Cross-modal boost for specifications, contracts, and documentation
                 if canonical_uri.endswith((".md", ".markdown", ".json", ".yaml", ".yml")):
-                    damped_support *= 1.25
+                    fused_score = min(1.0, round(fused_score * 1.08, 4))
+                    damped_support *= 1.35
 
             if fused_score >= self.minimum_score:
                 info["total_score"] = fused_score

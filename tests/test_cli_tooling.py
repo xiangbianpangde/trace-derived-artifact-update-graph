@@ -171,9 +171,10 @@ class TestCLITooling(unittest.TestCase):
 
         content = hook_file.read_text(encoding="utf-8")
         self.assertIn("DAUG HOOK BEGIN", content)
-        self.assertIn("daug\" check --staged", content.replace("$DAUG_ENTRY", "daug"))
+        self.assertIn("check --staged", content)
         # Strict mode must block on stale (exit 1) and fail-closed on infra errors.
-        self.assertIn("1) exit 1", content)
+        self.assertIn("exit 1", content)
+        self.assertIn("--fail-on-stale", content)
 
         # Test uninstall
         class UninstallArgs:
@@ -190,11 +191,23 @@ class TestCLITooling(unittest.TestCase):
         from daug.cli import build_hook_script_body
 
         script = build_hook_script_body("pre-commit", strict=False, db_path=None, repo_root=self.repo_copy)
-        # Stale (exit 1) must be converted to a non-blocking exit.
-        self.assertIn("1) exit 1", script)
-        self.assertIn("*) exit 0", script)
-        # Warn-only must never propagate a block from strict mode.
+        # Warn-only must never request a blocking exit from check...
         self.assertNotIn("--fail-on-stale", script)
+        # ...and must end with an unconditional success exit.
+        self.assertIn("exit 0", script)
+        self.assertNotIn("exit 1", script)
+
+    def test_hook_warn_only_surfaces_findings(self):
+        """Warn-only must not discard the report, or it would be silently useless."""
+        from daug.cli import build_hook_script_body
+
+        script = build_hook_script_body("pre-commit", strict=False, db_path=None, repo_root=self.repo_copy)
+        # Output is captured and re-emitted when a finding is present.
+        self.assertIn("DAUG_OUT=", script)
+        self.assertIn("printf", script)
+        self.assertIn("STALE", script)
+        # The previous implementation sent everything to /dev/null.
+        self.assertNotIn("check --staged --repo-root \"$DAUG_REPO\" >/dev/null", script)
 
     def test_hook_strict_blocks_on_stale_only(self):
         """Strict hooks block on staleness, not on unrelated exit codes."""
@@ -202,7 +215,7 @@ class TestCLITooling(unittest.TestCase):
 
         script = build_hook_script_body("pre-commit", strict=True, db_path="/tmp/x.sqlite", repo_root=self.repo_copy)
         self.assertIn("--fail-on-stale", script)
-        self.assertIn("1) exit 1", script)
+        self.assertIn("exit 1", script)
         # Infrastructure failure (exit 3) must block in strict mode.
         self.assertIn("blocking because strict mode is enabled", script)
 

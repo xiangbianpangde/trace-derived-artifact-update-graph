@@ -136,8 +136,18 @@ def cmd_trace_ingest(args):
 
     count_organic = 0
     count_recommended = 0
+    count_skipped = 0
     trace_id = None
     repo_id = None
+
+    # Artifacts that the ledger intentionally does not track (for example paths
+    # excluded by .gitignore) can still appear in historical traces. Recording
+    # those events would violate the artifact foreign key, and re-registering
+    # the paths would reintroduce the very noise the exclusion removes. Skip
+    # such events and report the count instead of failing the whole import.
+    known_artifacts = {
+        row[0] for row in ledger.conn.execute("SELECT artifact_id FROM artifact").fetchall()
+    }
 
     for raw in normalizer.read_jsonl(args.trace_file):
         ev = normalizer.validate_and_normalize_event(raw)
@@ -152,6 +162,11 @@ def cmd_trace_ingest(args):
             started_at=ev.get("occurred_at")
         )
 
+        target_artifact = ev.get("artifact_id")
+        if target_artifact and target_artifact not in known_artifacts:
+            count_skipped += 1
+            continue
+
         _, is_dup = ledger.append_tool_event(ev)
         if not is_dup:
             if ev.get("access_origin") == "system_recommended":
@@ -159,7 +174,13 @@ def cmd_trace_ingest(args):
             else:
                 count_organic += 1
 
-    print(f"[trace-ingest] Ingested trace '{trace_id}': {count_organic} organic events, {count_recommended} recommended events. Schema validation: PASS.")
+    msg = (
+        f"[trace-ingest] Ingested trace '{trace_id}': {count_organic} organic events, "
+        f"{count_recommended} recommended events. Schema validation: PASS."
+    )
+    if count_skipped:
+        msg += f" Skipped {count_skipped} event(s) for untracked artifacts."
+    print(msg)
 
 def cmd_trace_record(args):
     db_path = None
@@ -745,20 +766,40 @@ def build_hook_script_body(hook_type: str, strict: bool, db_path: Optional[str],
     #   3 = DAUG could not run (missing ledger/graph)    -> allow unless strict
     # Any other code (crash, signal) is treated as infrastructure failure.
     if strict:
+        # Strict: run quietly, then translate the exit code into a block/allow
+        # decision. Output goes to the terminal only when the run must block.
+        db_branch = (
+            f'if [ -n "$DAUG_DB" ]; then\n'
+            f'    "$DAUG_ENTRY" check --staged --repo-root "$DAUG_REPO" --db "$DAUG_DB" {strict_flag}>/dev/null\n'
+            f'else\n'
+            f'    "$DAUG_ENTRY" check --staged --repo-root "$DAUG_REPO" {strict_flag}>/dev/null\n'
+            f'fi\n'
+            f'rc=$?\n'
+        )
         tail = (
             'case "$rc" in\n'
             '    0) exit 0 ;;\n'
-            '    1) exit 1 ;;\n'
+            '    1) "$DAUG_ENTRY" check --staged --repo-root "$DAUG_REPO" ${DAUG_DB:+--db "$DAUG_DB"} --fail-on-stale >&2; exit 1 ;;\n'
             '    *) echo "[DAUG] check failed to run (exit $rc); blocking because strict mode is enabled." >&2; exit 1 ;;\n'
             'esac\n'
         )
     else:
-        tail = (
-            'case "$rc" in\n'
-            '    1) exit 1 ;;\n'
-            '    *) exit 0 ;;\n'
-            'esac\n'
+        # Warn-only: capture the report and surface it only when it carries a
+        # finding or the tool could not run. A clean check stays silent so the
+        # hook does not add noise to every commit. Never blocks.
+        db_branch = (
+            f'if [ -n "$DAUG_DB" ]; then\n'
+            f'    DAUG_OUT="$("$DAUG_ENTRY" check --staged --repo-root "$DAUG_REPO" --db "$DAUG_DB" 2>&1)"\n'
+            f'else\n'
+            f'    DAUG_OUT="$("$DAUG_ENTRY" check --staged --repo-root "$DAUG_REPO" 2>&1)"\n'
+            f'fi\n'
+            f'rc=$?\n'
+            f'if [ "$rc" -ne 0 ] || printf %s "$DAUG_OUT" | grep -qE "STALE|WARNING|Error"; then\n'
+            f'    printf %s\\n "$DAUG_OUT"\n'
+            f'fi\n'
+            f'exit 0\n'
         )
+        tail = ''
 
     return f"""{HOOK_MARKER_BEGIN}
 # Trace-Derived Artifact Update Graph (DAUG) {hook_type} hook
@@ -772,14 +813,7 @@ if [ ! -x "$DAUG_ENTRY" ]; then
     exit 0
 fi
 
-if [ -n "$DAUG_DB" ]; then
-    "$DAUG_ENTRY" check --staged --repo-root "$DAUG_REPO" --db "$DAUG_DB" {strict_flag}>/dev/null
-else
-    "$DAUG_ENTRY" check --staged --repo-root "$DAUG_REPO" {strict_flag}>/dev/null
-fi
-rc=$?
-
-{tail}{HOOK_MARKER_END}
+{db_branch}{tail}{HOOK_MARKER_END}
 """
 
 def cmd_hook_install(args):

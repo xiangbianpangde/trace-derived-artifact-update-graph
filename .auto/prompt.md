@@ -43,3 +43,10 @@ Optimize DAUG's multi-modal candidate retrieval ranking and cross-modal artifact
 - Outcome: `mrr = 0.6667` (+38.5%), `recall_at_5 = 0.7000` (+57.5%), `precision_at_3 = 0.6667` (+200%), `verifier_f1 = 1.0000`, latency 84.9ms.
 - Insight: Non-code specifications (`plan/STATUS.md`, `worklog/...`) successfully entered top ranks without degrading negative control safety.
 
+### Run 2 (Keep)
+- Commit: `a0d71e4`
+- Hypothesis: Compilers and language servers already provide immediate feedback on code-to-code dependencies; DAUG's core value is eliminating silent documentation and contract rot that compilers cannot catch. For `interface`, `schema`, and `behavior` changes, apply a cross-modal specification priority boost (1.08x fused score, 1.35x damped support) for non-code artifacts (`.md`, `.json`, `.yaml`).
+- Outcome: `mrr = 1.0000` (perfect top-1 rank across all test scenarios!), `recall_at_5 = 0.8667` (+95% vs baseline), `precision_at_3 = 0.7778` (+250% vs baseline), `verifier_f1 = 1.0000` (100% negative control precision preserved), latency 190.2ms.
+- Insight: Achieving 1.0000 MRR demonstrates that behavior signals from real traces, when combined with cross-modal prioritization, consistently elevate relevant documentation to the very top recommendation.
+
+

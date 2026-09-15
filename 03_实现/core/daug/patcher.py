@@ -20,7 +20,11 @@ class PatchProposer:
         self.policy_engine = policy_engine or PolicyEngine(ledger)
         self.repo_root_override = repo_root_override
 
-    def propose_patch(self, verification_id: str) -> Optional[Dict[str, Any]]:
+    def propose_patch(
+        self,
+        verification_id: str,
+        renames: Optional[Dict[str, str]] = None
+    ) -> Optional[Dict[str, Any]]:
         cursor = self.ledger.conn.cursor()
 
         # 1. Fetch verification, candidate, and artifact details
@@ -71,12 +75,48 @@ class PatchProposer:
         original_text = current_bytes.decode("utf-8", errors="replace")
         lines = original_text.splitlines(keepends=True)
 
-        # Generate modified lines (replace obsolete user_id with subject_id)
+        # Resolve dynamic symbol rename mapping
+        effective_renames = dict(renames) if renames else {}
+        if not effective_renames:
+            # First check payload table for structured renames
+            try:
+                ev_payload_row = cursor.execute(
+                    "SELECT evidence_json FROM verification_evidence_payload WHERE verification_id=?",
+                    (verification_id,)
+                ).fetchone()
+                if ev_payload_row and ev_payload_row["evidence_json"]:
+                    data = json.loads(ev_payload_row["evidence_json"])
+                    if "renames" in data and data["renames"]:
+                        effective_renames.update(data["renames"])
+            except Exception:
+                pass
+
+        if not effective_renames:
+            verif_row = cursor.execute(
+                "SELECT evidence_digest FROM verification WHERE verification_id=?",
+                (verification_id,)
+            ).fetchone()
+            if verif_row and verif_row["evidence_digest"]:
+                try:
+                    ev_data = json.loads(verif_row["evidence_digest"])
+                    if isinstance(ev_data, dict) and "renames" in ev_data:
+                        effective_renames.update(ev_data["renames"])
+                except Exception:
+                    pass
+
+        # Fallback for demo scenario compatibility
+        if not effective_renames and "user_id" in original_text:
+            effective_renames["user_id"] = "subject_id"
+
+        # Generate modified lines dynamically
         new_lines = []
         changed_spans = []
         for line in lines:
-            if "user_id" in line:
-                mod_line = line.replace("user_id", "subject_id")
+            mod_line = line
+            for old_tok, new_tok in effective_renames.items():
+                if old_tok in mod_line and new_tok:
+                    mod_line = mod_line.replace(old_tok, new_tok)
+            if mod_line != line:
                 new_lines.append(mod_line)
                 changed_spans.append({"original": line.strip(), "replacement": mod_line.strip()})
             else:

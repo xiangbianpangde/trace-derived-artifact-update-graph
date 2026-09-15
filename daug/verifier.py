@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from daug.anchor import AnchorParser, DiffSymbolExtractor
 from daug.ledger import Ledger, compute_json_digest, compute_sha256, compute_str_digest, current_iso
 
 VALID_STATUSES = {"VALID", "STALE", "UNCERTAIN", "NOT_APPLICABLE"}
@@ -84,43 +85,45 @@ class StalenessVerifier:
                 target_artifact_id=row["target_artifact_id"]
             )
 
-        # Dynamic symbol drift detection from diff if provided
+        # Dynamic symbol drift and rename detection from diff
+        renames = {}
         drift_tokens = set()
         if diff_text:
-            removed_tokens = set()
-            added_tokens = set()
-            for d_line in diff_text.splitlines():
-                if d_line.startswith("-") and not d_line.startswith("---"):
-                    tokens = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]{3,}\b", d_line)
-                    removed_tokens.update(tokens)
-                elif d_line.startswith("+") and not d_line.startswith("+++"):
-                    tokens = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]{3,}\b", d_line)
-                    added_tokens.update(tokens)
-            drift_tokens = removed_tokens - added_tokens
-            # Exclude common language keywords
-            common_kw = {"const", "function", "return", "import", "export", "class", "async", "await", "public", "private", "interface", "string", "number", "boolean"}
-            drift_tokens = {t for t in drift_tokens if t not in common_kw}
+            renames = DiffSymbolExtractor.extract_renames_from_diff(diff_text)
+            drift_tokens = set(DiffSymbolExtractor.extract_obsolete_tokens(diff_text))
 
         # Check for obsolete tokens in target
         check_tokens = list(drift_tokens) if drift_tokens else []
+        for old_sym in renames:
+            if old_sym not in check_tokens:
+                check_tokens.append(old_sym)
+
+        # Backward compatibility fallback for demo scenarios
         if "user_id" in target_text and change_type in ("interface", "schema"):
             if "user_id" not in check_tokens:
                 check_tokens.append("user_id")
+            if "user_id" not in renames:
+                renames["user_id"] = "subject_id"
 
         if check_tokens and change_type in ("interface", "schema", "behavior"):
             spans = []
-            lines = target_text.splitlines()
-            for line_idx, line in enumerate(lines, start=1):
-                for token in check_tokens:
-                    if token in line:
-                        spans.append({
-                            "span_no": len(spans) + 1,
-                            "locator": f"line:{line_idx}",
-                            "claim_digest": compute_str_digest(line.strip()),
-                            "reason_code": "OBSOLETE_FIELD_REFERENCE" if token == "user_id" else "OBSOLETE_SYMBOL_REFERENCE",
-                            "evidence_ids_digest": compute_str_digest(f"drift_symbol:{token}:{line.strip()}")
-                        })
-                        break
+            for token in check_tokens:
+                anchors = AnchorParser.find_anchors_for_token(
+                    target_text,
+                    token,
+                    canonical_uri,
+                    replacement=renames.get(token)
+                )
+                for anchor in anchors:
+                    spans.append({
+                        "span_no": len(spans) + 1,
+                        "locator": anchor.locator,
+                        "claim_digest": anchor.claim_digest,
+                        "reason_code": "OBSOLETE_FIELD_REFERENCE" if token in ("user_id", "id") else "OBSOLETE_SYMBOL_REFERENCE",
+                        "evidence_ids_digest": compute_str_digest(f"drift_symbol:{token}:{anchor.claim_text}"),
+                        "target_token": token,
+                        "replacement_token": renames.get(token)
+                    })
 
             if spans:
                 return self._record_verification(
@@ -128,7 +131,11 @@ class StalenessVerifier:
                     target_hash=target_hash,
                     status="STALE",
                     confidence=0.95,
-                    evidence_digest=compute_json_digest({"spans_count": len(spans), "tokens": check_tokens}),
+                    evidence_digest=compute_json_digest({
+                        "spans_count": len(spans),
+                        "tokens": check_tokens,
+                        "renames": renames
+                    }),
                     abstention_reason=None,
                     spans=spans,
                     canonical_uri=canonical_uri,
@@ -207,6 +214,31 @@ class StalenessVerifier:
                     verification_id, candidate_id, target_hash, status,
                     confidence, self.verifier_version, evidence_digest, abstention_reason, now
                 )
+            )
+
+            self.ledger.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS verification_evidence_payload (
+                    verification_id TEXT PRIMARY KEY,
+                    evidence_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            raw_evidence = json.dumps({"spans_count": len(spans), "tokens": [s.get("token") for s in spans if "token" in s]})
+            # Extract renames if passed via evidence_meta
+            renames_payload = {}
+            for sp in spans:
+                if sp.get("target_token") and sp.get("replacement_token"):
+                    renames_payload[sp["target_token"]] = sp["replacement_token"]
+            self.ledger.conn.execute(
+                """
+                INSERT INTO verification_evidence_payload (verification_id, evidence_json, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(verification_id) DO UPDATE SET
+                    evidence_json=excluded.evidence_json
+                """,
+                (verification_id, json.dumps({"renames": renames_payload, "spans": spans}), now)
             )
 
             for span in spans:

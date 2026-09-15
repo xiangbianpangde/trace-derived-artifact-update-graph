@@ -103,12 +103,12 @@
 | 轨迹校验与敏感脱敏 | **Tested** | Schema 校验完备，正则脱敏密钥与 Token |
 | 图构建与特征融合 | **Tested** | 融合 Static、Reference、Trace，支持超边与自强化抑制 |
 | 候选检索与特征解释 | **Tested on demo fixture & real trace** | 输出 Top-K 候选及 EdgeEvidence 解释树，真实 GAP Trace 验证 0 AST 召回反转有效 |
-| 独立陈旧验证器 | **Tested on synthetic fixture & real code** | 严格输出四值状态，负对照 0 误报，Span 准确定位与动态 Symbol 漂移识别 |
-| 最小补丁提案生成器 | **Tested** | 绑定 Expected Target Hash，生成 Unified Diff |
+| 独立陈旧验证器 | **Tested on synthetic fixture & real code** | 严格输出四值状态，负对照 0 误报，细粒度 Section / JSON Pointer / Symbol 锚点定位与动态 Symbol 漂移识别 |
+| 最小补丁提案生成器 | **Tested** | 绑定 Expected Target Hash，基于动态符号对应生成 Unified Diff（无硬编码） |
 | 补丁安全应用与回读校验 | **Tested with CAS Guard** | 严格受 CAS 预检防漂移保护，写回后执行回读 SHA-256 校验并生成审计凭据 |
 | 日常工程开发工具链 (CLI & Hook & CI) | **Tested** | `daug check`、`daug patch apply`、`daug hook install` 与 PR Check 工作流模板就绪 |
 | Pi Coding Agent 插件扩展 | **Tested in Pi Runtime** | `extensions/daug.ts` 与 `~/.pi/agent/extensions/daug.ts` 已通过 Pi 运行时加载验证 |
-| 自动化测试套件 (16项) | **Tested** | `python3 -m unittest discover -s tests` 16 项 100% 通过 (0.5s) |
+| 自动化测试套件 (21项) | **Tested** | `python3 -m unittest discover -s tests` 21 项 100% 通过 (0.25s) |
 | 端到端演示演练 | **Tested** | `./bin/daug demo run` 成功落盘交互式报告与清单 |
 | 生产环境授权 | **Developer Tooling Ready (Manual Gate)** | 严格保留人工确认，未经开发者逐项复核授权绝无全自动写回 |
 

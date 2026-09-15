@@ -19,4 +19,5 @@ updated: 2026-09-14
 | PROC-0005 | 2026-09-14 | CORRECTION | CATALOG | 修正目录文件为纯目录结构00_目录.md并软链接至README.md与00_入口/00_目录.md，移除重复的readme型内容 | 00_目录.md, README.md | 完成交接 |
 | PROC-0006 | 2026-09-14 | RUN | CLI-TOOLING | 落实日常工程开发工具链：实现 daug check 代码与文档陈旧校验、daug patch apply 人工复核与 CAS 写入、daug hook install/uninstall 预提交钩子，以及 PR 检查 CI 工作流模板 | `daug/cli.py`, `daug/patcher.py`, `tests/test_cli_tooling.py`, `templates/daug-doc-check.yml` | 交付开发者使用 |
 | PROC-0007 | 2026-09-14 | FEATURE | PI-PLUGIN | 实现 Pi Coding Agent 插件扩展 (extensions/daug.ts 与 03_实现/plugins/pi/daug.ts)，支持工具调用事件无感录入账本 (daug trace record)、实时代码修改文档陈旧检测与阻断告警、/daug 交互命令与 daug_check/daug_patch 专用工具 | `extensions/daug.ts`, `03_实现/plugins/pi/daug.ts`, `~/.pi/agent/extensions/daug.ts` | 验证扩展加载与提交推送 |
+| PROC-0008 | 2026-09-15 | FEATURE | ANCHOR-ENGINE | 实现细粒度陈述级锚点 (AnchorParser) 与通用动态符号漂移/补丁提议引擎 (DiffSymbolExtractor)，消除硬编码符号映射，支持 Markdown Section、JSON Pointer、Code Symbol 细粒度定位与动态 Unified Diff 生成，全库 21 项单测 100% 通过 | `daug/anchor.py`, `daug/verifier.py`, `daug/patcher.py`, `tests/test_claim_anchors.py` | 启动消融与基准实验 (Autoresearch) |
 

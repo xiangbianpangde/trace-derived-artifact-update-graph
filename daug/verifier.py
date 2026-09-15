@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from daug.anchor import AnchorParser, DiffSymbolExtractor
 from daug.ledger import Ledger, compute_json_digest, compute_sha256, compute_str_digest, current_iso
+from daug.statecheck import StateClaimScanner, StateTruthExtractor
 
 VALID_STATUSES = {"VALID", "STALE", "UNCERTAIN", "NOT_APPLICABLE"}
 
@@ -142,6 +143,50 @@ class StalenessVerifier:
                     target_artifact_id=row["target_artifact_id"]
                 )
 
+        # 3. Stateful claim detection (state transitions and numeric claims).
+        #
+        # Symbol drift above only fires when an identifier changed. Documents
+        # frequently go stale without any identifier changing: a work item moves
+        # from review to active, or a plan revision advances, while prose
+        # elsewhere still asserts the old value. Detect those too, but only when
+        # this repository nominates a status ledger as the source of truth, so
+        # the check never invents an authority of its own.
+        ledger_uri = self._get_status_ledger_uri(cursor, row["repository_id"])
+        if ledger_uri and canonical_uri != ledger_uri:
+            state_findings = self._detect_state_claims(
+                repo_root=repo_root,
+                ledger_uri=ledger_uri,
+                target_text=target_text,
+                target_uri=canonical_uri,
+            )
+            if state_findings:
+                state_spans = []
+                for f in state_findings:
+                    state_spans.append({
+                        "span_no": len(state_spans) + 1,
+                        "locator": f"{f['locator']} [{f['kind']}]",
+                        "claim_digest": f["claim_digest"],
+                        "reason_code": "STALE_STATE_CLAIM",
+                        "evidence_ids_digest": compute_str_digest(
+                            f"state:{f['kind']}:{f['subject']}:{f['claimed']}->{f['actual']}"
+                        ),
+                    })
+                return self._record_verification(
+                    candidate_id=candidate_id,
+                    target_hash=target_hash,
+                    status="STALE",
+                    confidence=0.9,
+                    evidence_digest=compute_json_digest({
+                        "spans_count": len(state_spans),
+                        "state_claims": state_findings,
+                        "source_of_truth": ledger_uri,
+                    }),
+                    abstention_reason=None,
+                    spans=state_spans,
+                    canonical_uri=canonical_uri,
+                    target_artifact_id=row["target_artifact_id"],
+                )
+
         # If it's a rollout plan or unrelated operational doc without obsolete claims:
         if "rollout_plan" in canonical_uri:
             return self._record_verification(
@@ -180,6 +225,85 @@ class StalenessVerifier:
             res = self.verify_candidate(cand["candidate_id"])
             results.append(res)
         return results
+
+    # --- Stateful claim support -------------------------------------------------
+
+    # Conventional locations for a repository's authoritative status ledger.
+    # Only an artifact that actually exists in the ledger is used, so a project
+    # without a status file simply gets no state checking.
+    STATUS_LEDGER_CANDIDATES = (
+        "plan/STATUS.md",
+        "STATUS.md",
+        "plan/status.md",
+    )
+
+    def _get_status_ledger_uri(self, cursor, repository_id: str) -> Optional[str]:
+        """Returns the repository-relative URI of its status ledger, if tracked."""
+        cached = getattr(self, "_status_ledger_cache", None)
+        if cached is None:
+            cached = {}
+            self._status_ledger_cache = cached
+        if repository_id in cached:
+            return cached[repository_id]
+
+        found: Optional[str] = None
+        for candidate in self.STATUS_LEDGER_CANDIDATES:
+            row = cursor.execute(
+                "SELECT canonical_uri FROM artifact WHERE repository_id=? AND canonical_uri=? LIMIT 1",
+                (repository_id, candidate),
+            ).fetchone()
+            if row:
+                found = row["canonical_uri"]
+                break
+
+        cached[repository_id] = found
+        return found
+
+    def _detect_state_claims(
+        self,
+        repo_root: Path,
+        ledger_uri: str,
+        target_text: str,
+        target_uri: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Compares stateful claims in a target document against the status ledger.
+
+        Numeric revision claims are only scanned in a document's header region
+        for files that are themselves coordination documents; elsewhere a
+        historical revision number is legitimate history, not a stale claim.
+        """
+        try:
+            truth = StateTruthExtractor.from_status_ledger(repo_root, ledger_uri)
+        except Exception:
+            return []
+        if not truth.get("available"):
+            return []
+
+        findings: List[Dict[str, Any]] = []
+
+        work_items = truth.get("work_items") or {}
+        if work_items:
+            findings.extend(
+                StateClaimScanner.scan_work_item_status_claims(target_text, work_items)
+            )
+
+        # Revision claims are meaningful only for coordination-style documents
+        # (handoff/status/index), and only in their leading section.
+        lower_uri = target_uri.lower()
+        is_coordination_doc = any(
+            token in lower_uri for token in ("handoff", "status", "readme", "index", "plan/", "00_", "当前")
+        )
+        if is_coordination_doc and truth.get("revision") is not None:
+            findings.extend(
+                StateClaimScanner.scan_numeric_claims(
+                    target_text,
+                    revision_truth=truth["revision"],
+                    line_limit=120,
+                )
+            )
+
+        return findings
 
     def _record_verification(
         self,

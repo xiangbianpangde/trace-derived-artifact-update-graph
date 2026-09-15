@@ -103,13 +103,13 @@
 | 轨迹校验与敏感脱敏 | **Tested** | Schema 校验完备，正则脱敏密钥与 Token |
 | 图构建与特征融合 | **Tested** | 融合 Static、Reference、Trace，支持超边与自强化抑制 |
 | 候选检索与特征解释 | **Tested on demo fixture & real trace (MRR 1.0000)** | 输出 Top-K 候选及 EdgeEvidence 解释树，真实 GAP Trace 验证 0 AST 召回反转有效，Autoresearch 优化后 MRR 达到 1.0000 |
-| 独立陈旧验证器 | **Tested on synthetic fixture & real code** | 严格输出四值状态，负对照 0 误报，细粒度 Section / JSON Pointer / Symbol 锚点定位与动态 Symbol 漂移识别 |
+| 独立陈旧验证器 | **Tested on synthetic fixture & real code** | 严格输出四值状态，负对照 0 误报，细粒度 Section / JSON Pointer / Symbol 锚点定位与动态 Symbol 漂移识别，新增状态跃迁与数值断陈旧检测 (STALE_STATE_CLAIM) |
 | 最小补丁提案生成器 | **Tested** | 绑定 Expected Target Hash，基于动态符号对应生成 Unified Diff（无硬编码） |
 | 补丁安全应用与回读校验 | **Tested with CAS Guard** | 严格受 CAS 预检防漂移保护，写回后执行回读 SHA-256 校验并生成审计凭据 |
 | 日常工程开发工具链 (CLI & Hook & CI) | **Tested & Hardened** | `daug check`、`daug patch apply`、`daug hook install` 与 PR Check 工作流模板就绪；钩子已修复 core.hooksPath 感知、退出码语义与绝对路径解析三项阻断级缺陷 |
 | 交互式 Web 审查工作台 (P2) | **Tested & Deployed** | `./bin/daug review` 启动本地审查工作台，支持分栏 Diff 查看、单次批准门禁与 CAS 原子回读 |
 | Pi Coding Agent 插件扩展 | **Tested in Pi Runtime** | `extensions/daug.ts` 与 `~/.pi/agent/extensions/daug.ts` 已支持 `/daug review` 与实时阻断 |
-| 自动化测试套件 (32项) | **Tested** | `python3 -m unittest discover -s tests` 32 项 100% 通过 (1.1s) |
+| 自动化测试套件 (44项) | **Tested** | `python3 -m unittest discover -s tests` 44 项 100% 通过 (1.1s) |
 | 学术基准与消融对比实验 (P1) | **Benchmarked & Validated** | RQ1~RQ5 消融实验完备，量化验证工具轨迹相较于纯 AST (0%) 的显著增益 |
 | 学术论文 A / B 规划与草案 | **Drafted** | 论文 A 12 章完整初稿与论文 B 详细规划全部落盘归档至 05_研究资产 |
 | 端到端演示演练 | **Tested** | `./bin/daug demo run` 成功落盘交互式报告与清单 |

@@ -32,6 +32,59 @@ def get_ledger(db_path: str = "demo.sqlite") -> Ledger:
     ledger = Ledger(db_path)
     return ledger
 
+def load_gitignore_exclusions(repo_root: Path) -> set:
+    """
+    Read .gitignore files under repo_root and return the set of ignored
+    directory names and relative file paths.
+
+    Artifact registration must skip gitignored paths: build output, caches and
+    runtime state mutate constantly and would otherwise flood the update graph
+    with noise, crowding out the real documents the graph exists to protect.
+
+    Only the common subset of gitignore syntax is honoured (blank lines,
+    comments, negation-free patterns, directory markers). Unsupported patterns
+    are skipped rather than guessed at.
+    """
+    dir_names: set = set()
+    file_paths: set = set()
+
+    for gitignore_path in [repo_root / ".gitignore"]:
+        if not gitignore_path.is_file():
+            continue
+        try:
+            lines = gitignore_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+
+        for raw in lines:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Negations re-include paths; resolving them correctly requires
+            # full gitignore semantics, so skip rather than mis-exclude.
+            if line.startswith("!"):
+                continue
+
+            # Strip a trailing slash (directory-only marker).
+            pattern = line.rstrip("/")
+            # Leading slash anchors to the repo root.
+            anchored = pattern.startswith("/")
+            pattern = pattern.lstrip("/")
+            if not pattern:
+                continue
+            # Glob characters are not interpreted; skip them explicitly so we
+            # never silently under- or over-exclude.
+            if any(ch in pattern for ch in "*?[]"):
+                continue
+
+            if "/" in pattern or anchored:
+                file_paths.add(pattern)
+            else:
+                dir_names.add(pattern)
+                file_paths.add(pattern)
+
+    return dir_names | file_paths
+
 def cmd_init(args):
     db = args.db
     repo_root = Path(args.repo_root).resolve()
@@ -43,14 +96,27 @@ def cmd_init(args):
 
     # Register all files in repo_root
     count = 0
-    ignored_dirs = {".git", "node_modules", ".pi", "dist", "build", "coverage", ".next"}
+    builtin_ignored_dirs = {".git", "node_modules", ".pi", "dist", "build", "coverage", ".next"}
+
+    # Honour .gitignore unless the caller explicitly opts out.
+    use_gitignore = not getattr(args, "no_gitignore", False)
+    gitignored = load_gitignore_exclusions(repo_root) if use_gitignore else set()
+    if gitignored:
+        builtin_ignored_dirs |= gitignored
+
+    skipped_gitignored = 0
     for root, dirs, files in os.walk(repo_root):
-        dirs[:] = [d for d in dirs if d not in ignored_dirs]
+        dirs[:] = [d for d in dirs if d not in builtin_ignored_dirs]
         for f in files:
             if f.startswith(".") or f == ".DS_Store":
                 continue
             p = Path(root) / f
             rel = str(p.relative_to(repo_root))
+            # A gitignored file may sit inside a tracked directory, so check the
+            # repo-relative path as well as the directory names.
+            if rel in gitignored:
+                skipped_gitignored += 1
+                continue
             kind = "documentation" if rel.endswith(".md") else ("test" if "test" in rel else "source_code")
             risk = "R2" if (kind in ("documentation", "test")) else "R3"
             with open(p, "rb") as fp:
@@ -59,7 +125,10 @@ def cmd_init(args):
             ledger.record_artifact_version(aid, h, size_bytes=p.stat().st_size)
             count += 1
 
-    print(f"[init] Initialized SQLite database '{db}' with {count} artifacts registered for repo '{repo_id}'.")
+    msg = f"[init] Initialized SQLite database '{db}' with {count} artifacts registered for repo '{repo_id}'."
+    if skipped_gitignored:
+        msg += f" Skipped {skipped_gitignored} gitignored path(s)."
+    print(msg)
 
 def cmd_trace_ingest(args):
     ledger = get_ledger(args.db)
@@ -990,6 +1059,12 @@ def main():
     p_init.add_argument("--db", default="demo.sqlite", help="SQLite database path")
     p_init.add_argument("--repo-root", default=str(BASE_DIR / "fixtures/demo-repo"), help="Path to repository root")
     p_init.add_argument("--repo-id", default="demo-auth-repo", help="Repository identifier")
+    p_init.add_argument(
+        "--no-gitignore",
+        action="store_true",
+        dest="no_gitignore",
+        help="Register gitignored paths too (default: skip them to avoid build/runtime noise)",
+    )
 
     # trace
     p_ingest = subparsers.add_parser("trace", help="Trace commands")

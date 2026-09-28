@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="720" viewBox="0 0 1600 720">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2F6F9F"/>
+    </marker>
+    <style>
+      .title{font:700 30px Helvetica,Arial,sans-serif;fill:#082a4a}
+      .label{font:700 20px Helvetica,Arial,sans-serif;fill:#082a4a}
+      .body{font:400 16px Helvetica,Arial,sans-serif;fill:#233447}
+      .small{font:400 15px Helvetica,Arial,sans-serif;fill:#5b7085}
+      .box{fill:#ffffff;stroke:#082a4a;stroke-width:2;rx:12}
+      .soft{fill:#e6f0f8;stroke:#9abbd3;stroke-width:2;rx:12}
+      .warn{fill:#fff7e6;stroke:#bf7a17;stroke-width:2;rx:12}
+      .stop{fill:#f8e8ea;stroke:#a63d4a;stroke-width:2;rx:12}
+      .arrow{fill:none;stroke:#2f6f9f;stroke-width:4;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1600" height="720" fill="#ffffff"/>
+  <text x="60" y="70" class="title">Update lifecycle and control boundary</text>
+
+  <rect x="55" y="135" width="190" height="110" class="box"/>
+  <text x="85" y="180" class="label">Change Event</text>
+  <text x="85" y="212" class="body">typed source diff</text>
+
+  <rect x="300" y="135" width="190" height="110" class="soft"/>
+  <text x="330" y="180" class="label">Rank Top K</text>
+  <text x="330" y="212" class="body">graph plus evidence</text>
+
+  <rect x="545" y="135" width="210" height="110" class="box"/>
+  <text x="575" y="180" class="label">Verify Claims</text>
+  <text x="575" y="212" class="body">frozen evidence</text>
+
+  <rect x="835" y="95" width="210" height="90" class="soft"/>
+  <text x="865" y="138" class="label">VALID or N/A</text>
+  <text x="865" y="166" class="body">record and stop</text>
+
+  <rect x="835" y="230" width="210" height="90" class="warn"/>
+  <text x="865" y="273" class="label">UNCERTAIN</text>
+  <text x="865" y="301" class="body">human review</text>
+
+  <rect x="835" y="365" width="210" height="90" class="soft"/>
+  <text x="865" y="408" class="label">STALE</text>
+  <text x="865" y="436" class="body">evidence-bound finding</text>
+
+  <rect x="1115" y="365" width="210" height="90" class="box"/>
+  <text x="1145" y="408" class="label">Patch Proposed</text>
+  <text x="1145" y="436" class="body">minimal and hash-bound</text>
+
+  <rect x="1380" y="365" width="170" height="90" class="stop"/>
+  <text x="1410" y="408" class="label">MVP STOP</text>
+  <text x="1410" y="436" class="body">not applied</text>
+
+  <rect x="1115" y="545" width="210" height="90" class="warn"/>
+  <text x="1145" y="588" class="label">Future Gate</text>
+  <text x="1145" y="616" class="body">policy and approval</text>
+
+  <rect x="1380" y="545" width="170" height="90" class="box"/>
+  <text x="1410" y="588" class="label">Apply</text>
+  <text x="1410" y="616" class="body">read back and test</text>
+
+  <path d="M245 190 H300" class="arrow"/>
+  <path d="M490 190 H545" class="arrow"/>
+  <path d="M755 175 C790 165 805 145 835 140" class="arrow"/>
+  <path d="M755 190 C790 205 805 260 835 275" class="arrow"/>
+  <path d="M755 205 C790 250 805 385 835 410" class="arrow"/>
+  <path d="M1045 410 H1115" class="arrow"/>
+  <path d="M1325 410 H1380" class="arrow"/>
+  <path d="M1220 455 V545" class="arrow"/>
+  <path d="M1325 590 H1380" class="arrow"/>
+
+  <text x="60" y="680" class="small">A high candidate score triggers verification. It never authorizes modification by itself.</text>
+</svg>
+

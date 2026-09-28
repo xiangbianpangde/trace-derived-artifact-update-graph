@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="860" viewBox="0 0 1600 860">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2F6F9F"/>
+    </marker>
+    <style>
+      .title{font:700 30px Helvetica,Arial,sans-serif;fill:#082a4a}
+      .entity{fill:#ffffff;stroke:#082a4a;stroke-width:2;rx:10}
+      .derived{fill:#e6f0f8;stroke:#9abbd3;stroke-width:2;rx:10}
+      .decision{fill:#fff7e6;stroke:#bf7a17;stroke-width:2;rx:10}
+      .name{font:700 21px Helvetica,Arial,sans-serif;fill:#082a4a}
+      .field{font:400 15px Helvetica,Arial,sans-serif;fill:#233447}
+      .arrow{fill:none;stroke:#2f6f9f;stroke-width:3;marker-end:url(#arrow)}
+      .small{font:400 15px Helvetica,Arial,sans-serif;fill:#5b7085}
+    </style>
+  </defs>
+  <rect width="1600" height="860" fill="#ffffff"/>
+  <text x="60" y="65" class="title">Core data model and provenance chain</text>
+
+  <rect x="55" y="125" width="245" height="135" class="entity"/>
+  <text x="82" y="165" class="name">TraceRun</text>
+  <text x="82" y="197" class="field">task and repository</text>
+  <text x="82" y="223" class="field">origin and completeness</text>
+
+  <rect x="365" y="125" width="245" height="135" class="entity"/>
+  <text x="392" y="165" class="name">ToolEvent</text>
+  <text x="392" y="197" class="field">sequence and operation</text>
+  <text x="392" y="223" class="field">origin and hashes</text>
+
+  <rect x="675" y="125" width="245" height="135" class="entity"/>
+  <text x="702" y="165" class="name">ArtifactVersion</text>
+  <text x="702" y="197" class="field">content hash</text>
+  <text x="702" y="223" class="field">authority and risk</text>
+
+  <rect x="985" y="125" width="245" height="135" class="derived"/>
+  <text x="1012" y="165" class="name">ChangeEvent</text>
+  <text x="1012" y="197" class="field">change type and impact</text>
+  <text x="1012" y="223" class="field">before and after versions</text>
+
+  <rect x="1295" y="125" width="245" height="135" class="derived"/>
+  <text x="1322" y="165" class="name">CandidateSet</text>
+  <text x="1322" y="197" class="field">graph and policy version</text>
+  <text x="1322" y="223" class="field">ranked targets</text>
+
+  <rect x="205" y="390" width="260" height="145" class="derived"/>
+  <text x="232" y="432" class="name">GraphEdge</text>
+  <text x="232" y="464" class="field">directed and typed score</text>
+  <text x="232" y="490" class="field">organic vs recommended</text>
+
+  <rect x="535" y="390" width="260" height="145" class="entity"/>
+  <text x="562" y="432" class="name">EdgeEvidence</text>
+  <text x="562" y="464" class="field">event, commit, reference</text>
+  <text x="562" y="490" class="field">weight and digest</text>
+
+  <rect x="865" y="390" width="260" height="145" class="derived"/>
+  <text x="892" y="432" class="name">Verification</text>
+  <text x="892" y="464" class="field">status and affected span</text>
+  <text x="892" y="490" class="field">evidence and target hash</text>
+
+  <rect x="1195" y="390" width="260" height="145" class="derived"/>
+  <text x="1222" y="432" class="name">PatchProposal</text>
+  <text x="1222" y="464" class="field">minimal patch digest</text>
+  <text x="1222" y="490" class="field">expected target hash</text>
+
+  <rect x="535" y="665" width="260" height="125" class="decision"/>
+  <text x="562" y="707" class="name">PolicyDecision</text>
+  <text x="562" y="739" class="field">risk, action, reason code</text>
+
+  <rect x="865" y="665" width="260" height="125" class="decision"/>
+  <text x="892" y="707" class="name">Attempt</text>
+  <text x="892" y="739" class="field">new id for every retry</text>
+
+  <rect x="1195" y="665" width="260" height="125" class="decision"/>
+  <text x="1222" y="707" class="name">ApplicationReceipt</text>
+  <text x="1222" y="739" class="field">readback and test state</text>
+
+  <path d="M300 192 H365" class="arrow"/>
+  <path d="M610 192 H675" class="arrow"/>
+  <path d="M920 192 H985" class="arrow"/>
+  <path d="M1230 192 H1295" class="arrow"/>
+  <path d="M488 260 C430 305 375 335 335 390" class="arrow"/>
+  <path d="M535 462 H465" class="arrow"/>
+  <path d="M465 462 H535" class="arrow"/>
+  <path d="M1417 260 C1380 330 1100 330 995 390" class="arrow"/>
+  <path d="M1125 462 H1195" class="arrow"/>
+  <path d="M1325 535 C1240 610 840 600 665 665" class="arrow"/>
+  <path d="M795 727 H865" class="arrow"/>
+  <path d="M1125 727 H1195" class="arrow"/>
+
+  <text x="60" y="830" class="small">Derived records never replace canonical artifact content. Human acceptance and canonicalization are separate states.</text>
+</svg>
+

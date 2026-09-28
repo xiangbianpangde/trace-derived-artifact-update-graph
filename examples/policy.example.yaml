@@ -1,0 +1,88 @@
+schema_version: daug.policy.v1
+mode: propose_only
+
+repository:
+  repository_id: demo-auth-repo
+  allowed_roots:
+    - ./demo-repo
+  follow_symlinks: false
+  ignored_paths:
+    - .git/**
+    - node_modules/**
+    - vendor/**
+    - dist/**
+
+capture:
+  store_full_prompts: false
+  store_raw_environment: false
+  store_diff_text: bounded_ephemeral
+  max_diff_context_lines: 40
+  secret_scan_required: true
+  incomplete_trace_action: exclude_from_learning
+
+learning:
+  organic_weight: 1.0
+  human_directed_weight: 0.5
+  recommended_weight: 0.05
+  recommended_outcome_gate:
+    - verified_stale
+    - human_accepted
+    - test_dependency_confirmed
+  task_size_normalization: log_inverse
+  bulk_task_threshold: 100
+  time_decay_half_life_days: 90
+
+retrieval:
+  top_k: 10
+  minimum_candidate_score: 0.20
+  include_hard_dependencies: true
+  maximum_model_verifications_per_change: 10
+
+verification:
+  allowed_statuses:
+    - VALID
+    - STALE
+    - UNCERTAIN
+    - NOT_APPLICABLE
+  fail_closed_status: UNCERTAIN
+  minimum_stale_confidence_for_patch: 0.90
+  model_tools: []
+  reject_instruction_like_repository_content: true
+
+risk_rules:
+  - match: generated/**
+    risk_class: R0
+    action: PROPOSE_ONLY
+  - match: docs/**
+    risk_class: R2
+    action: REVIEW_REQUIRED
+  - match: tests/**
+    risk_class: R2
+    action: REVIEW_REQUIRED
+  - match: config/deployment/**
+    risk_class: R3
+    action: REVIEW_REQUIRED
+  - match: security/**
+    risk_class: R4
+    action: REJECTED
+  - match: policies/**
+    risk_class: R4
+    action: REJECTED
+  - match: '**'
+    risk_class: R3
+    action: REVIEW_REQUIRED
+
+write_gate:
+  enabled: false
+  require_expected_hash: true
+  require_single_use_approval: true
+  require_readback: true
+  require_tests: true
+  unknown_reason_code_action: REJECTED
+
+retention:
+  raw_event_days: 30
+  redacted_event_days: 180
+  derived_feature_days: 365
+  delete_on_repository_removal: true
+

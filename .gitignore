@@ -1,0 +1,32 @@
+# 依赖与打包
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# 临时与运行文件
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# 本地环境变量与私有配置
+.env
+.env.local
+.env.*.local
+
+# 数据库临时文件 (SQLite 临时文件)
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# 编辑器与 IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Agent 与临时运行时缓存
+.pi/

@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="820" viewBox="0 0 1600 820">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2F6F9F"/>
+    </marker>
+    <style>
+      .title{font:700 32px Helvetica,Arial,sans-serif;fill:#ffffff}
+      .subtitle{font:400 18px Helvetica,Arial,sans-serif;fill:#dce9f4}
+      .lane{font:700 20px Helvetica,Arial,sans-serif;fill:#5b7085;letter-spacing:1px}
+      .box-title{font:700 22px Helvetica,Arial,sans-serif;fill:#082a4a}
+      .box-text{font:400 17px Helvetica,Arial,sans-serif;fill:#233447}
+      .small{font:400 15px Helvetica,Arial,sans-serif;fill:#5b7085}
+      .box{fill:#ffffff;stroke:#082a4a;stroke-width:2;rx:12}
+      .soft{fill:#e6f0f8;stroke:#9abbd3;stroke-width:2;rx:12}
+      .arrow{fill:none;stroke:#2f6f9f;stroke-width:4;marker-end:url(#arrow)}
+      .dashed{fill:none;stroke:#2f6f9f;stroke-width:3;stroke-dasharray:10 8;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1600" height="820" fill="#f7fafc"/>
+  <rect x="0" y="0" width="1600" height="112" fill="#082a4a"/>
+  <text x="62" y="51" class="title">Trace-Derived Artifact Update Graph</text>
+  <text x="62" y="84" class="subtitle">Observation, ranking, verification, and governance remain separate control stages</text>
+
+  <text x="70" y="160" class="lane">AGENT HOST</text>
+  <text x="365" y="160" class="lane">CAPTURE</text>
+  <text x="700" y="160" class="lane">ANALYSIS</text>
+  <text x="1055" y="160" class="lane">VERIFICATION</text>
+  <text x="1340" y="160" class="lane">GOVERNANCE</text>
+
+  <rect x="55" y="205" width="230" height="138" class="box"/>
+  <text x="82" y="250" class="box-title">Agent</text>
+  <text x="82" y="284" class="box-text">read  search  edit</text>
+  <text x="82" y="313" class="box-text">write  test  execute</text>
+
+  <rect x="345" y="205" width="250" height="138" class="box"/>
+  <text x="372" y="250" class="box-title">Tool Wrapper</text>
+  <text x="372" y="284" class="box-text">normalize operation</text>
+  <text x="372" y="313" class="box-text">attach origin and hashes</text>
+
+  <rect x="345" y="405" width="250" height="138" class="soft"/>
+  <text x="372" y="450" class="box-title">Event Ledger</text>
+  <text x="372" y="484" class="box-text">append-only events</text>
+  <text x="372" y="513" class="box-text">deterministic replay</text>
+
+  <rect x="665" y="205" width="255" height="138" class="box"/>
+  <text x="692" y="250" class="box-title">Feature Builder</text>
+  <text x="692" y="284" class="box-text">trace  Git  static</text>
+  <text x="692" y="313" class="box-text">reference  semantic</text>
+
+  <rect x="665" y="405" width="255" height="138" class="soft"/>
+  <text x="692" y="450" class="box-title">Update Graph</text>
+  <text x="692" y="484" class="box-text">directed and typed edges</text>
+  <text x="692" y="513" class="box-text">versioned evidence</text>
+
+  <rect x="665" y="605" width="255" height="120" class="box"/>
+  <text x="692" y="650" class="box-title">Candidate Retriever</text>
+  <text x="692" y="684" class="box-text">Top K plus reasons</text>
+
+  <rect x="1020" y="205" width="255" height="138" class="box"/>
+  <text x="1047" y="250" class="box-title">Claim Extractor</text>
+  <text x="1047" y="284" class="box-text">target spans and claims</text>
+  <text x="1047" y="313" class="box-text">frozen target version</text>
+
+  <rect x="1020" y="405" width="255" height="138" class="soft"/>
+  <text x="1047" y="450" class="box-title">Staleness Verifier</text>
+  <text x="1047" y="484" class="box-text">VALID  STALE</text>
+  <text x="1047" y="513" class="box-text">UNCERTAIN  N/A</text>
+
+  <rect x="1020" y="605" width="255" height="120" class="box"/>
+  <text x="1047" y="650" class="box-title">Patch Proposer</text>
+  <text x="1047" y="684" class="box-text">minimal, hash-bound diff</text>
+
+  <rect x="1330" y="255" width="220" height="138" class="box"/>
+  <text x="1357" y="300" class="box-title">Policy Engine</text>
+  <text x="1357" y="334" class="box-text">risk and authority</text>
+  <text x="1357" y="363" class="box-text">fail closed</text>
+
+  <rect x="1330" y="495" width="220" height="138" class="soft"/>
+  <text x="1357" y="540" class="box-title">Decision Store</text>
+  <text x="1357" y="574" class="box-text">proposal and receipts</text>
+  <text x="1357" y="603" class="box-text">human state separate</text>
+
+  <path d="M285 274 H345" class="arrow"/>
+  <path d="M470 343 V405" class="arrow"/>
+  <path d="M595 474 H665" class="arrow"/>
+  <path d="M792 343 V405" class="arrow"/>
+  <path d="M792 543 V605" class="arrow"/>
+  <path d="M920 665 H1020" class="arrow"/>
+  <path d="M1147 343 V405" class="arrow"/>
+  <path d="M1147 543 V605" class="arrow"/>
+  <path d="M1275 665 C1320 665 1320 365 1330 334" class="arrow"/>
+  <path d="M1440 393 V495" class="arrow"/>
+  <path d="M1330 564 C1240 564 1200 560 1147 543" class="dashed"/>
+
+  <text x="62" y="780" class="small">MVP boundary: the workflow stops at Patch Proposed. No repository write, commit, pull request, or merge.</text>
+</svg>
+

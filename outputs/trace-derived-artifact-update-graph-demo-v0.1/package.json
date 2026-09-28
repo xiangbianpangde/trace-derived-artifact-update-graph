@@ -1,0 +1,24 @@
+{
+  "name": "daug-core",
+  "version": "0.1.0",
+  "description": "Trace-Derived Artifact Update Graph Core Engine & Benchmark",
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
+    "test:contract": "node --experimental-strip-types --test tests/contract.test.ts",
+    "test:behavior": "node --experimental-strip-types --test tests/behavior.test.ts",
+    "test:benchmark": "node --experimental-strip-types --test tests/benchmark.test.ts",
+    "daug": "node --experimental-strip-types src/cli.ts"
+  },
+  "keywords": [
+    "artifact-update-graph",
+    "staleness-verification",
+    "agent-trace",
+    "software-engineering"
+  ],
+  "author": "DAUG Team",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^26.6.3"
+  }
+}

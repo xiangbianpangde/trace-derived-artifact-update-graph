@@ -2,12 +2,14 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from daug.ledger import Ledger, compute_sha256
 from daug.normalizer import Normalizer
@@ -31,6 +33,105 @@ EXIT_INFRA = 3         # DAUG could not run (no ledger, no graph snapshot, bad a
 def get_ledger(db_path: str = "demo.sqlite") -> Ledger:
     ledger = Ledger(db_path)
     return ledger
+
+
+_REQUIRED_LEDGER_TABLES = frozenset({"artifact", "graph_snapshot", "repository", "schema_meta"})
+
+
+def _ledger_schema_ready(path: Path) -> bool:
+    """Return whether *path* is an initialized DAUG ledger, without creating it.
+
+    ``sqlite3.connect(path)`` creates an empty database when an auto-discovery
+    candidate is only a placeholder.  Checking candidates read-only prevents
+    that empty file from being selected and avoids the later opaque
+    ``no such table: graph_snapshot`` failure.
+    """
+    if not path.is_file():
+        return False
+    conn = None
+    try:
+        uri = f"file:{quote(str(path.resolve()))}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+        return _REQUIRED_LEDGER_TABLES.issubset({row[0] for row in rows})
+    except (OSError, sqlite3.DatabaseError):
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _ledger_belongs_to_repo(path: Path, repo_root: Path) -> bool:
+    """Return whether an initialized ledger explicitly belongs to *repo_root*."""
+    if not _ledger_schema_ready(path):
+        return False
+    conn = None
+    try:
+        uri = f"file:{quote(str(path.resolve()))}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        rows = conn.execute("SELECT canonical_root FROM repository").fetchall()
+        target = repo_root.expanduser().resolve()
+        for (canonical_root,) in rows:
+            if not canonical_root:
+                continue
+            stored = Path(canonical_root).expanduser()
+            if not stored.is_absolute():
+                stored = BASE_DIR / stored
+            if stored.resolve() == target:
+                return True
+        return False
+    except (OSError, sqlite3.DatabaseError):
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def discover_ledger_path(repo_root: Path, explicit: Optional[str] = None) -> Optional[Path]:
+    """Find a usable ledger for *repo_root* without opening empty databases.
+
+    Explicit paths and repo-local ledger paths are trusted only after schema
+    validation.  Shared fallback paths must also contain a repository row
+    matching the requested root; this prevents a valid ledger from another
+    project from being silently reused.
+    """
+    if explicit:
+        candidate = Path(explicit).expanduser().resolve()
+        return candidate if _ledger_schema_ready(candidate) else None
+
+    root = repo_root.expanduser().resolve()
+    local_candidates = [
+        root / ".daug.sqlite",
+        root / ".daug" / "ledger.sqlite",
+        root / "demo.sqlite",
+        root / "gap-demo.sqlite",
+    ]
+    seen = set()
+    for candidate in local_candidates:
+        candidate = candidate.expanduser().resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if _ledger_schema_ready(candidate):
+            return candidate
+
+    shared_candidates = [
+        Path.cwd() / "gap-demo.sqlite",
+        Path.cwd() / "demo.sqlite",
+        BASE_DIR / "gap-demo.sqlite",
+        BASE_DIR / "demo.sqlite",
+    ]
+    for candidate in shared_candidates:
+        candidate = candidate.expanduser().resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if _ledger_belongs_to_repo(candidate, root):
+            return candidate
+    return None
+
 
 def load_gitignore_exclusions(repo_root: Path) -> set:
     """
@@ -183,24 +284,12 @@ def cmd_trace_ingest(args):
     print(msg)
 
 def cmd_trace_record(args):
-    db_path = None
-    if getattr(args, "db", None):
-        db_path = Path(args.db).resolve()
-    else:
-        candidates = [
-            Path.cwd() / ".daug.sqlite",
-            Path.cwd() / ".daug" / "ledger.sqlite",
-            Path.cwd() / "gap-demo.sqlite",
-            Path.cwd() / "demo.sqlite",
-            BASE_DIR / "gap-demo.sqlite",
-            BASE_DIR / "demo.sqlite"
-        ]
-        for c in candidates:
-            if c.exists():
-                db_path = c
-                break
+    db_path = discover_ledger_path(
+        repo_root=Path.cwd(),
+        explicit=getattr(args, "db", None),
+    )
 
-    if not db_path or not db_path.exists():
+    if not db_path:
         if not getattr(args, "quiet", False):
             print("[trace-record] Warning: No DAUG database found. Skipping trace recording.", file=sys.stderr)
         return 0
@@ -317,25 +406,13 @@ def cmd_review(args):
             repo_root = Path.cwd().resolve()
 
     # 2. Determine db path
-    db_path = None
-    if getattr(args, "db", None):
-        db_path = Path(args.db).resolve()
-    else:
-        candidates = [
-            repo_root / ".daug.sqlite",
-            repo_root / ".daug" / "ledger.sqlite",
-            Path.cwd() / "gap-demo.sqlite",
-            Path.cwd() / "demo.sqlite",
-            BASE_DIR / "gap-demo.sqlite",
-            BASE_DIR / "demo.sqlite"
-        ]
-        for c in candidates:
-            if c.exists():
-                db_path = c
-                break
+    db_path = discover_ledger_path(
+        repo_root=repo_root,
+        explicit=getattr(args, "db", None),
+    )
 
-    if not db_path or not db_path.exists():
-        print("[review] Error: No DAUG ledger database found. Specify --db or run 'daug init' first.", file=sys.stderr)
+    if not db_path:
+        print("[review] Error: No usable DAUG ledger database found for this repository. Specify an initialized --db or run 'daug init' first.", file=sys.stderr)
         return 1
 
     start_review_server(
@@ -495,25 +572,13 @@ def cmd_check(args):
         return 0
 
     # 3. Locate database
-    db_path = None
-    if getattr(args, "db", None):
-        db_path = Path(args.db).resolve()
-    else:
-        candidates = [
-            repo_root / ".daug.sqlite",
-            repo_root / ".daug" / "ledger.sqlite",
-            Path.cwd() / "gap-demo.sqlite",
-            Path.cwd() / "demo.sqlite",
-            BASE_DIR / "gap-demo.sqlite",
-            BASE_DIR / "demo.sqlite"
-        ]
-        for c in candidates:
-            if c.exists():
-                db_path = c
-                break
+    db_path = discover_ledger_path(
+        repo_root=repo_root,
+        explicit=getattr(args, "db", None),
+    )
 
-    if not db_path or not db_path.exists():
-        err_msg = "[check] Error: No DAUG ledger database found. Specify --db or run 'daug init' first."
+    if not db_path:
+        err_msg = "[check] Error: No usable DAUG ledger database found for this repository. Specify an initialized --db or run 'daug init' first."
         if getattr(args, "json", False):
             print(json.dumps({"error": err_msg, "exit_code": EXIT_INFRA}))
         else:

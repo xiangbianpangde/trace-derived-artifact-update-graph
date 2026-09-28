@@ -32,6 +32,27 @@ import { Type } from "typebox";
 const execFileAsync = promisify(execFile);
 
 const CANONICAL_DAUG_CLI = "/Users/xbpd/Documents/Codex/2026-09-14/referenced-chatgpt-conversation-this-is-an/bin/daug";
+const LEDGER_SCHEMA_PROBE = `
+import sqlite3
+import sys
+from pathlib import Path
+
+try:
+    db_path, repo_root = sys.argv[1:3]
+    connection = sqlite3.connect(db_path)
+    tables = {
+        row[0]
+        for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    required = {"repository", "artifact", "graph_snapshot"}
+    if not required.issubset(tables):
+        raise SystemExit(1)
+    row = connection.execute("SELECT canonical_root FROM repository LIMIT 1").fetchone()
+    if not row or Path(row[0]).resolve() != Path(repo_root).resolve():
+        raise SystemExit(1)
+except Exception:
+    raise SystemExit(1)
+`;
 
 function resolveDaugCli(cwd: string): string {
 	const candidates = [
@@ -62,7 +83,18 @@ async function runDaug(cwd: string, args: string[]): Promise<{ stdout: string; s
 	}
 }
 
-function findDaugDb(cwd: string): string | null {
+async function isUsableDaugDb(dbPath: string, cwd: string): Promise<boolean> {
+	try {
+		await execFileAsync("python3", ["-c", LEDGER_SCHEMA_PROBE, resolve(dbPath), resolve(cwd)], {
+			maxBuffer: 1024 * 1024,
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function findDaugDb(cwd: string): Promise<string | null> {
 	const candidates = [
 		join(cwd, ".daug.sqlite"),
 		join(cwd, ".daug/ledger.sqlite"),
@@ -72,7 +104,7 @@ function findDaugDb(cwd: string): string | null {
 		"/Users/xbpd/Documents/Codex/2026-09-14/referenced-chatgpt-conversation-this-is-an/demo.sqlite",
 	];
 	for (const c of candidates) {
-		if (existsSync(c)) return c;
+		if (existsSync(c) && await isUsableDaugDb(c, cwd)) return c;
 	}
 	return null;
 }
@@ -83,7 +115,7 @@ export default function daugExtension(pi: ExtensionAPI) {
 
 	// ─── Lifecycle & Status Indicator ──────────────────────────────────────────
 	pi.on("session_start", async (_event, ctx) => {
-		const db = findDaugDb(ctx.cwd);
+		const db = await findDaugDb(ctx.cwd);
 		if (db) {
 			ctx.ui.setStatus("daug", "daug:on");
 		}
@@ -203,15 +235,27 @@ export default function daugExtension(pi: ExtensionAPI) {
 			if (res.code !== 0 && !res.stdout.startsWith("{")) {
 				return {
 					content: [{ type: "text", text: `DAUG check failed:\n${res.stderr || res.stdout}` }],
-					details: { error: true },
+					details: { error: true, exit_code: res.code },
 				};
 			}
 
 			try {
 				const data = JSON.parse(res.stdout);
+				if (data.error) {
+					return {
+						content: [{ type: "text", text: `DAUG check unavailable (exit ${data.exit_code ?? res.code}): ${data.error}` }],
+						details: { ...data, error: true },
+					};
+				}
+				if (data.status === "clean") {
+					return {
+						content: [{ type: "text", text: `### 📊 DAUG Documentation Staleness Report\n\n✅ ${data.message || "No modified files detected."}` }],
+						details: data,
+					};
+				}
 				let markdown = `### 📊 DAUG Documentation Staleness Report\n\n`;
-				markdown += `**Database**: \`${data.database}\` | **Graph Version**: \`${data.graph_version}\`\n\n`;
-				markdown += `**Summary**: Inspected **${data.total_files}** file(s), found **${data.total_stale}** stale document(s).\n\n`;
+				markdown += `**Database**: \`${data.database ?? "unknown"}\` | **Graph Version**: \`${data.graph_version ?? "unknown"}\`\n\n`;
+				markdown += `**Summary**: Inspected **${data.total_files ?? 0}** file(s), found **${data.total_stale ?? 0}** stale document(s).\n\n`;
 
 				for (const insp of data.inspections || []) {
 					markdown += `#### File: \`${insp.file}\`\n`;
@@ -418,7 +462,7 @@ export default function daugExtension(pi: ExtensionAPI) {
 			}
 
 			// Default: status
-			const db = findDaugDb(ctx.cwd);
+			const db = await findDaugDb(ctx.cwd);
 			const cli = resolveDaugCli(ctx.cwd);
 			ctx.ui.notify(
 				`DAUG Extension Status:\n` +

@@ -213,7 +213,7 @@ CREATE TABLE patch_proposal (
   tests_digest TEXT,
   rollback_digest TEXT NOT NULL,
   generator_version TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('proposed', 'superseded', 'rejected', 'applied')),
+  status TEXT NOT NULL CHECK (status IN ('proposed', 'superseded', 'rejected')),
   created_at TEXT NOT NULL
 );
 

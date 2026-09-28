@@ -257,3 +257,34 @@ class TestCLITooling(unittest.TestCase):
         with redirect_stdout(buf):
             rc = cmd_check(Args())
         self.assertEqual(rc, EXIT_INFRA, "missing ledger must be an infrastructure error, not staleness")
+
+    def test_auto_discovery_ignores_empty_or_unrelated_ledgers(self):
+        """Auto-discovery must not open an empty local SQLite file or another repo's ledger."""
+        empty_db = Path(self.temp_dir) / "demo.sqlite"
+        empty_db.touch()
+
+        class Args:
+            files = ["src/auth/user_context.ts"]
+            files_opt = None
+            staged = False
+            uncommitted = False
+            db = None
+            repo_root = str(self.repo_copy)
+            json = True
+            fail_on_stale = False
+            propose = False
+
+        import io
+        from contextlib import redirect_stdout
+        previous_cwd = Path.cwd()
+        try:
+            os.chdir(self.temp_dir)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_check(Args())
+        finally:
+            os.chdir(previous_cwd)
+
+        self.assertEqual(rc, 3)
+        payload = json.loads(buf.getvalue())
+        self.assertIn("No usable DAUG ledger database", payload["error"])
